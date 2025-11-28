@@ -50,25 +50,37 @@ export interface VideoImportRow {
   status?: string;
 }
 
-export type SearchStatus = 'pending' | 'searching' | 'completed' | 'failed';
+// Search status (matches SQL ENUM)
+export type SearchStatus = 'Assigned' | 'In Progress' | 'Completed';
 
+// SearchQuery interface - matches SQL table search_queue
 export interface SearchQuery {
-  id: string;
-  created_at: string;
-  search_query: string;
-  department: Department;
-  status: SearchStatus;
-  perplexity_settings?: {
-    creativity: number;
-    structure_mode: boolean;
-  };
-  results_count: number;
-  videos_added: number;
-  assigned_to: string | null;
-  completed_at: string | null;
-  error_message?: string | null;
+  // Primary key
+  search_id: string;                    // VARCHAR(20), e.g., SEARCH-001
+  
+  // Core fields
+  employee: string | null;              // VARCHAR(255)
+  department: Department;               // department_code ENUM
+  topic: string;                        // VARCHAR(255)
+  search_query: string;                 // TEXT
+  status: SearchStatus;                 // search_status ENUM
+  videos_found: number;                 // INTEGER
+  date_assigned: string;                // DATE (YYYY-MM-DD)
+  date_completed: string | null;        // DATE or NULL
+  notes: string;                        // TEXT
+  
+  // Perplexity settings
+  perplexity_creativity: number;        // DECIMAL(3,2), 0.0-1.0
+  perplexity_structure_mode: boolean;   // BOOLEAN
+  results_count: number;                // INTEGER
+  error_message: string | null;         // TEXT or NULL
+  
+  // Timestamps
+  created_at?: string;                  // TIMESTAMPTZ
+  updated_at?: string;                  // TIMESTAMPTZ
 }
 
+// Form data for creating/editing search queries
 export interface SearchFormData {
   employee: string;           // Required - Employee name or email
   department: Department;     // Required - Department code

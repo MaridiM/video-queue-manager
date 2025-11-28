@@ -16,31 +16,31 @@ import { Button } from './ui/Button';
 import { Badge } from './ui/Badge';
 import { Modal } from './ui/Modal';
 
+// Status badge using SQL status values
 function getStatusBadge(status: SearchStatus) {
-  const styles: Record<SearchStatus, { className: string; icon: React.ReactNode }> = {
-    pending: { 
+  const styles: Record<SearchStatus, { className: string; icon: React.ReactNode; label: string }> = {
+    'Assigned': { 
       className: 'bg-gray-100 text-gray-700 border-gray-200', 
-      icon: <Clock size={12} className="mr-1" /> 
+      icon: <Clock size={12} className="mr-1" />,
+      label: 'Assigned'
     },
-    searching: { 
+    'In Progress': { 
       className: 'bg-blue-100 text-blue-700 border-blue-200', 
-      icon: <Loader2 size={12} className="mr-1 animate-spin" /> 
+      icon: <Loader2 size={12} className="mr-1 animate-spin" />,
+      label: 'In Progress'
     },
-    completed: { 
+    'Completed': { 
       className: 'bg-emerald-100 text-emerald-700 border-emerald-200', 
-      icon: <CheckCircle size={12} className="mr-1" /> 
-    },
-    failed: { 
-      className: 'bg-red-100 text-red-700 border-red-200', 
-      icon: <AlertCircle size={12} className="mr-1" /> 
+      icon: <CheckCircle size={12} className="mr-1" />,
+      label: 'Completed'
     },
   };
 
-  const style = styles[status];
+  const style = styles[status] || styles['Assigned'];
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border whitespace-nowrap ${style.className}`}>
       {style.icon}
-      {status.charAt(0).toUpperCase() + status.slice(1)}
+      {style.label}
     </span>
   );
 }
@@ -55,11 +55,11 @@ function SearchForm({
   onCancel: () => void;
 }) {
   const [formData, setFormData] = useState<SearchFormData>({
-    employee: initialData?.assigned_to || '',
+    employee: initialData?.employee || '',
     department: initialData?.department || 'DEV',
-    topic: (initialData as any)?.topic || '',
+    topic: initialData?.topic || '',
     search_query: initialData?.search_query || '',
-    notes: (initialData as any)?.notes || '',
+    notes: initialData?.notes || '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -156,7 +156,7 @@ function SearchForm({
         <textarea
           className={`${inputClass} min-h-[60px]`}
           placeholder="e.g., Focus on recent videos, Avoid tutorials older than 2023"
-          value={formData.notes}
+          value={formData.notes || ''}
           onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
         />
       </div>
@@ -182,59 +182,66 @@ export function SearchQueueTable() {
 
   const filteredData = useMemo(() => {
     return data.filter(item => {
-      const matchesSearch = item.search_query.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesSearch = 
+        item.search_query.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.topic.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesStatus = statusFilter === 'all' || item.status === statusFilter;
       const matchesDept = departmentFilter === 'all' || item.department === departmentFilter;
       return matchesSearch && matchesStatus && matchesDept;
     });
   }, [data, searchTerm, statusFilter, departmentFilter]);
 
-  // Stats
+  // Stats using SQL status values
   const stats = useMemo(() => ({
     total: data.length,
-    pending: data.filter(s => s.status === 'pending').length,
-    searching: data.filter(s => s.status === 'searching').length,
-    completed: data.filter(s => s.status === 'completed').length,
-    failed: data.filter(s => s.status === 'failed').length,
+    assigned: data.filter(s => s.status === 'Assigned').length,
+    inProgress: data.filter(s => s.status === 'In Progress').length,
+    completed: data.filter(s => s.status === 'Completed').length,
   }), [data]);
 
   const handleAdd = (formData: SearchFormData) => {
     // Generate SEARCH-XXX ID like Python script
     const maxId = data.reduce((max, item) => {
-      const match = item.id.match(/SEARCH-(\d+)/);
+      const match = item.search_id.match(/SEARCH-(\d+)/);
       return match ? Math.max(max, parseInt(match[1])) : max;
     }, 0);
     const newId = `SEARCH-${String(maxId + 1).padStart(3, '0')}`;
+    const now = new Date().toISOString();
 
-    const newSearch: SearchQuery & { topic?: string; notes?: string } = {
-      id: newId,
-      created_at: new Date().toISOString().split('T')[0], // YYYY-MM-DD format
-      search_query: formData.search_query || '',
+    const newSearch: SearchQuery = {
+      search_id: newId,
+      employee: formData.employee,
       department: formData.department,
-      status: 'pending',
-      perplexity_settings: { creativity: 0.5, structure_mode: true },
-      results_count: 0,
-      videos_added: 0,
-      assigned_to: formData.employee,
-      completed_at: null,
       topic: formData.topic,
+      search_query: formData.search_query,
+      status: 'Assigned',
+      videos_found: 0,
+      date_assigned: now.split('T')[0],
+      date_completed: null,
       notes: formData.notes || '',
+      perplexity_creativity: 0.5,
+      perplexity_structure_mode: true,
+      results_count: 0,
+      error_message: null,
+      created_at: now,
+      updated_at: now,
     };
-    setData([newSearch as SearchQuery, ...data]);
+    setData([newSearch, ...data]);
     setIsFormOpen(false);
   };
 
   const handleEdit = (formData: SearchFormData) => {
     if (!editingSearch) return;
     setData(data.map(item => 
-      item.id === editingSearch.id 
+      item.search_id === editingSearch.search_id 
         ? { 
             ...item, 
-            search_query: formData.search_query || '',
+            employee: formData.employee,
             department: formData.department,
-            assigned_to: formData.employee,
-            ...(formData.topic && { topic: formData.topic }),
-            ...(formData.notes !== undefined && { notes: formData.notes }),
+            topic: formData.topic,
+            search_query: formData.search_query,
+            notes: formData.notes || '',
+            updated_at: new Date().toISOString(),
           } 
         : item
     ));
@@ -244,7 +251,7 @@ export function SearchQueueTable() {
 
   const handleDelete = () => {
     if (searchToDelete) {
-      setData(data.filter(item => item.id !== searchToDelete));
+      setData(data.filter(item => item.search_id !== searchToDelete));
       setSearchToDelete(null);
       setIsDeleteOpen(false);
     }
@@ -263,26 +270,22 @@ export function SearchQueueTable() {
   return (
     <div className="space-y-4">
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="bg-white rounded-lg border border-gray-200 p-3">
           <div className="text-xl font-bold text-slate-900">{stats.total}</div>
           <div className="text-xs text-gray-500">Total</div>
         </div>
         <div className="bg-white rounded-lg border border-gray-200 p-3">
-          <div className="text-xl font-bold text-gray-600">{stats.pending}</div>
-          <div className="text-xs text-gray-500">Pending</div>
+          <div className="text-xl font-bold text-gray-600">{stats.assigned}</div>
+          <div className="text-xs text-gray-500">Assigned</div>
         </div>
         <div className="bg-white rounded-lg border border-gray-200 p-3">
-          <div className="text-xl font-bold text-blue-600">{stats.searching}</div>
-          <div className="text-xs text-gray-500">Searching</div>
+          <div className="text-xl font-bold text-blue-600">{stats.inProgress}</div>
+          <div className="text-xs text-gray-500">In Progress</div>
         </div>
         <div className="bg-white rounded-lg border border-gray-200 p-3">
           <div className="text-xl font-bold text-emerald-600">{stats.completed}</div>
           <div className="text-xs text-gray-500">Completed</div>
-        </div>
-        <div className="bg-white rounded-lg border border-gray-200 p-3 col-span-2 sm:col-span-1">
-          <div className="text-xl font-bold text-red-600">{stats.failed}</div>
-          <div className="text-xs text-gray-500">Failed</div>
         </div>
       </div>
 
@@ -294,7 +297,7 @@ export function SearchQueueTable() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
             <input
               type="text"
-              placeholder="Search queries..."
+              placeholder="Search by topic or query..."
               className="w-full pl-10 pr-4 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -345,19 +348,19 @@ export function SearchQueueTable() {
               <th className="px-4 py-3 font-medium w-[10%] hidden md:table-cell">Employee</th>
               <th className="px-4 py-3 font-medium w-[8%] text-center hidden lg:table-cell">Videos</th>
               <th className="px-4 py-3 font-medium w-[10%] hidden lg:table-cell">Notes</th>
-              <th className="px-4 py-3 font-medium w-[10%] hidden md:table-cell">Created</th>
+              <th className="px-4 py-3 font-medium w-[10%] hidden md:table-cell">Assigned</th>
               <th className="px-4 py-3 font-medium w-[10%] text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {filteredData.length > 0 ? (
               filteredData.map((search) => (
-                <tr key={search.id} className="hover:bg-gray-50/50 transition-colors group">
+                <tr key={search.search_id} className="hover:bg-gray-50/50 transition-colors group">
                   <td className="px-4 py-3">
                     <div className="min-w-0">
                       {/* Topic as main title */}
-                      <div className="font-medium text-gray-900 truncate text-sm" title={(search as any).topic || 'No topic'}>
-                        {(search as any).topic || <span className="text-gray-400 italic">No topic</span>}
+                      <div className="font-medium text-gray-900 truncate text-sm" title={search.topic}>
+                        {search.topic || <span className="text-gray-400 italic">No topic</span>}
                       </div>
                       {/* Search query as subtitle */}
                       {search.search_query && (
@@ -365,6 +368,7 @@ export function SearchQueueTable() {
                           {search.search_query}
                         </div>
                       )}
+                      {/* Error message if any */}
                       {search.error_message && (
                         <div className="text-xs text-red-500 mt-0.5 flex items-center gap-1 truncate">
                           <AlertCircle size={10} className="shrink-0" />
@@ -374,7 +378,7 @@ export function SearchQueueTable() {
                       {/* Mobile-only info */}
                       <div className="flex items-center gap-2 mt-1 sm:hidden">
                         <Badge variant="outline" className="text-[10px] px-1.5 py-0">{search.department}</Badge>
-                        <span className="text-xs text-gray-400">{search.videos_added} videos</span>
+                        <span className="text-xs text-gray-400">{search.videos_found} videos</span>
                       </div>
                     </div>
                   </td>
@@ -385,9 +389,9 @@ export function SearchQueueTable() {
                     {getStatusBadge(search.status)}
                   </td>
                   <td className="px-4 py-3 text-gray-600 hidden md:table-cell">
-                    {search.assigned_to ? (
-                      <span className="text-xs truncate block" title={search.assigned_to}>
-                        {search.assigned_to.includes('@') ? search.assigned_to.split('@')[0] : search.assigned_to}
+                    {search.employee ? (
+                      <span className="text-xs truncate block" title={search.employee}>
+                        {search.employee.includes('@') ? search.employee.split('@')[0] : search.employee}
                       </span>
                     ) : (
                       <span className="text-gray-400">—</span>
@@ -396,18 +400,18 @@ export function SearchQueueTable() {
                   <td className="px-4 py-3 text-center hidden lg:table-cell">
                     <span className="flex items-center justify-center gap-1 text-gray-700">
                       <Video size={12} className="text-gray-400" />
-                      {search.videos_added}
+                      {search.videos_found}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-gray-500 hidden lg:table-cell">
-                    {(search as any).notes ? (
-                      <span className="text-xs truncate block" title={(search as any).notes}>{(search as any).notes}</span>
+                    {search.notes ? (
+                      <span className="text-xs truncate block" title={search.notes}>{search.notes}</span>
                     ) : (
                       <span className="text-gray-400">—</span>
                     )}
                   </td>
                   <td className="px-4 py-3 text-gray-500 text-xs hidden md:table-cell">
-                    {new Date(search.created_at).toLocaleDateString('ru-RU')}
+                    {new Date(search.date_assigned).toLocaleDateString('ru-RU')}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
@@ -419,7 +423,7 @@ export function SearchQueueTable() {
                         <Pencil size={15} />
                       </button>
                       <button 
-                        onClick={() => openDelete(search.id)}
+                        onClick={() => openDelete(search.search_id)}
                         className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
                         title="Delete"
                       >
