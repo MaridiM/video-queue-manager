@@ -4,6 +4,66 @@
 
 ---
 
+## [1.3.1] - 2025-11-28
+
+### Verified - Video Queue Table Spec Compliance
+Проверка соответствия реализации Video Queue спецификации.
+
+#### ✅ Реализованные функции:
+| Функция | Статус |
+|---------|--------|
+| Display videos with status badges | ✅ Implemented |
+| Filter by status, department, priority | ✅ FilterPanel |
+| Add videos with form validation | ✅ VideoForm + Modal |
+| Edit videos (pre-filled form) | ✅ editingVideo state |
+| Delete with confirmation dialog | ✅ Delete Modal |
+| Search by title/channel | ✅ searchTerm filter |
+| Priority badges (low/medium/high) | ✅ PriorityBadge |
+| Status badges (7 статусов) | ✅ StatusBadge |
+| YouTube icon + external link | ✅ Video Details column |
+| Duration display | ✅ Clock icon + minutes |
+| AdminRHS-AI-Catalog design | ✅ Blue theme |
+| Mobile responsive | ✅ Adaptive layout |
+
+#### 📋 Компоненты Video Queue:
+- `VideoQueueTable.tsx` - основная таблица с CRUD
+- `VideoForm.tsx` - форма с валидацией
+- `FilterPanel.tsx` - боковая панель фильтров
+- `StatusBadge.tsx` - бейджи статусов
+- `Modal.tsx` - модальные окна
+
+#### ⏸️ Отложено:
+- Real-time Supabase подключение (используем mock данные)
+- Пагинация (placeholder)
+- Сортировка по колонкам
+- Экспорт в CSV
+
+### Verified - Filter Panel Component Spec Compliance
+
+#### ✅ Реализованные функции:
+| Функция | Статус |
+|---------|--------|
+| Collapsible filter sections | ✅ Accordion UI |
+| Multi-select checkboxes | ✅ Checkbox component |
+| Filter count badge (header) | ✅ activeFilterCount |
+| Filter count badge (per section) | ✅ AccordionTrigger |
+| Clear all filters button | ✅ clearAll() |
+| Active Filter Pills | ✅ Footer section |
+| Click-to-remove pills | ✅ onClick handler |
+| AdminRHS-AI-Catalog design | ✅ Blue theme |
+
+#### 📋 Компоненты:
+- `FilterPanel.tsx` - основной компонент фильтров
+- `Accordion.tsx` - сворачиваемые секции
+- `Checkbox.tsx` - чекбоксы с иконкой
+- `Badge.tsx` - бейджи счётчиков и пилюли
+
+#### ⏸️ Отложено:
+- Date Range filter (опционально)
+- Count per option display `(24)` (закомментировано)
+
+---
+
 ## [1.3.0] - 2025-11-28
 
 ### Added - Search Queue Page
@@ -216,5 +276,5 @@ npm run dev
 
 ---
 
-**Last Updated:** 2025-11-28
+**Last Updated:** 2025-11-28 12:45 UTC
 
