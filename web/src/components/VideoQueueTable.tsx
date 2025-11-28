@@ -15,12 +15,14 @@ import {
   Download,
   FileSpreadsheet,
   FileJson,
+  FileText,
   CheckCircle,
   Database,
   ArrowRight,
   Sparkles,
   FolderSync,
-  ChevronDown
+  ChevronDown,
+  X
 } from 'lucide-react';
 import type { VideoQueueItem, VideoFormData, Status, Priority, Department } from '../lib/types';
 import { videoQueueAPI, type VideoQueueAPI, type SyncCSVResult } from '../lib/api';
@@ -114,9 +116,15 @@ export function VideoQueueTable() {
       video_title: formData.video_title,
       channel_name: formData.channel_name,
       duration_minutes: formData.duration_minutes,
+      views: formData.views,
+      likes: formData.likes,
+      comments: formData.comments,
+      publish_date: formData.publish_date,
       priority: formData.priority,
       department: formData.department,
-      added_by: 'current_user@remotehelpers.com',
+      topic_category: formData.topic_category,
+      research_source: formData.research_source,
+      added_by: formData.added_by || 'System',
       notes: formData.notes,
     });
     
@@ -124,7 +132,12 @@ export function VideoQueueTable() {
       await fetchData();
       setIsFormOpen(false);
     } else {
-      setError(result.error || 'Failed to create');
+      // Handle duplicate video error
+      if (result.error?.includes('already exists')) {
+        setError(`⚠️ ${result.error}`);
+      } else {
+        setError(result.error || 'Failed to create');
+      }
     }
     
     setIsSaving(false);
@@ -202,10 +215,18 @@ export function VideoQueueTable() {
     setIsSyncing(false);
   };
 
-  // Export handler
-  const handleExport = (format: 'csv' | 'json') => {
+  // Export handler - direct download without opening new window
+  const handleExport = (format: 'csv' | 'json' | 'md') => {
     const url = videoQueueAPI.getExportUrl(format);
-    window.open(url, '_blank');
+    
+    // Create invisible link and trigger download
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = ''; // Browser will use filename from Content-Disposition header
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
     setShowExportMenu(false);
   };
 
@@ -239,17 +260,7 @@ export function VideoQueueTable() {
   }
 
   return (
-    <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-8rem)]">
-      {/* Error banner */}
-      {error && (
-        <div className="absolute top-4 right-4 bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2 text-red-700 z-50">
-          <AlertCircle size={16} />
-          <span className="text-sm">{error}</span>
-          <button onClick={() => setError(null)} className="text-red-500 hover:text-red-700 ml-2">
-            ×
-          </button>
-        </div>
-      )}
+    <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-8rem)] relative">
 
       <div className="lg:hidden">
         <Button variant="outline" onClick={() => setShowMobileFilters(!showMobileFilters)} className="w-full">
@@ -301,7 +312,7 @@ export function VideoQueueTable() {
                     className="fixed inset-0 z-10" 
                     onClick={() => setShowExportMenu(false)} 
                   />
-                  <div className="absolute right-0 mt-1 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                  <div className="absolute right-0 mt-1 w-44 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
                     <button
                       onClick={() => handleExport('csv')}
                       className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
@@ -315,6 +326,13 @@ export function VideoQueueTable() {
                     >
                       <FileJson size={16} className="text-blue-600" />
                       Export as JSON
+                    </button>
+                    <button
+                      onClick={() => handleExport('md')}
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                    >
+                      <FileText size={16} className="text-purple-600" />
+                      Export as Markdown
                     </button>
                   </div>
                 </>
@@ -452,13 +470,29 @@ export function VideoQueueTable() {
 
       <Modal
         isOpen={isFormOpen}
-        onClose={() => !isSaving && setIsFormOpen(false)}
+        onClose={() => { !isSaving && setIsFormOpen(false); setError(null); }}
         title={editingVideo ? "Edit Video" : "Add Video to Queue"}
       >
+        {/* Error message inside modal */}
+        {error && (
+          <div className="mb-4 bg-red-50 border border-red-300 rounded-lg px-4 py-3 flex items-start gap-3">
+            <AlertCircle size={20} className="text-red-600 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="font-semibold text-red-800">Error</p>
+              <p className="text-sm text-red-700">{error}</p>
+            </div>
+            <button 
+              onClick={() => setError(null)} 
+              className="text-red-500 hover:text-red-700"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        )}
         <VideoForm 
           initialData={editingVideo}
           onSubmit={editingVideo ? handleEdit : handleAdd}
-          onCancel={() => setIsFormOpen(false)}
+          onCancel={() => { setIsFormOpen(false); setError(null); }}
           isLoading={isSaving}
         />
       </Modal>

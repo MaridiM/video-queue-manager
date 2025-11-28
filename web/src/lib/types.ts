@@ -11,18 +11,30 @@ export type Status =
 
 export type Department = 'DEV' | 'SMM' | 'VID' | 'AID' | 'DGN' | 'MKT';
 
+export type ResearchSource = 'Perplexity' | 'Gemini' | 'GPT' | 'DeepSeek' | 'YouTube' | 'Manual';
+
 export interface VideoQueueItem {
   id: string;
   created_at: string;
   video_url: string;
+  video_id?: string;
   video_title: string;
   channel_name?: string;
   duration_minutes: number;
+  duration?: string;  // HH:MM:SS format
+  views?: number;
+  likes?: number;
+  comments?: number;
+  publish_date?: string;
   priority: Priority;
+  priority_score?: number;  // 0-100 calculated score
   status: Status;
   department: Department;
+  topic_category?: string;
+  research_source?: ResearchSource;
   assigned_to?: string | null;
   added_by: string;
+  added_date?: string;
   notes?: string | null;
   perplexity_search_id?: string;
 }
@@ -32,8 +44,15 @@ export interface VideoFormData {
   video_title: string;
   channel_name: string;
   duration_minutes: number;
+  views?: number;
+  likes?: number;
+  comments?: number;
+  publish_date?: string;
   priority: Priority;
   department: Department;
+  topic_category?: string;
+  research_source?: ResearchSource;
+  added_by?: string;
   status: Status;
   notes: string;
 }

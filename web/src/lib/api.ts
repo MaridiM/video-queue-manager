@@ -153,11 +153,15 @@ export const videoQueueAPI = {
     video_title: string;
     channel_name?: string;
     duration_minutes?: number;
+    views?: number;
+    likes?: number;
+    comments?: number;
+    publish_date?: string;
     priority?: string;
     department: string;
     topic_category?: string;
     research_source?: string;
-    added_by: string;
+    added_by?: string;
     notes?: string;
     perplexity_search_id?: string;
   }) => fetchAPI<VideoQueueAPI>('/api/video-queue', {
@@ -193,8 +197,12 @@ export const videoQueueAPI = {
   }),
 
   // Export to file (returns URL to download)
-  getExportUrl: (format: 'csv' | 'json') => 
-    `${API_BASE_URL}/api/video-queue/export?format=${format}`,
+  // Supports: csv, json, md (markdown)
+  getExportUrl: (format: 'csv' | 'json' | 'md', status?: string) => {
+    let url = `${API_BASE_URL}/api/video-queue/export?format=${format}`;
+    if (status) url += `&status=${status}`;
+    return url;
+  },
 };
 
 // =====================================================

@@ -1,8 +1,8 @@
 import { useState, useEffect, type ChangeEvent, type FormEvent } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, TrendingUp, Eye, ThumbsUp, MessageSquare, Calendar, Folder, Search } from 'lucide-react';
 import { Button } from './ui/Button';
-import type { VideoFormData, VideoQueueItem, Priority, Department, Status } from '../lib/types';
-import { DEPARTMENTS, PRIORITIES, STATUSES } from '../lib/constants';
+import type { VideoFormData, VideoQueueItem, Priority, Department, Status, ResearchSource } from '../lib/types';
+import { DEPARTMENTS, PRIORITIES, STATUSES, RESEARCH_SOURCES, TOPIC_CATEGORIES } from '../lib/constants';
 
 interface VideoFormProps {
   initialData?: VideoQueueItem | null;
@@ -17,13 +17,21 @@ export function VideoForm({ initialData, onSubmit, onCancel, isLoading }: VideoF
     video_title: '',
     channel_name: '',
     duration_minutes: 0,
+    views: 0,
+    likes: 0,
+    comments: 0,
+    publish_date: '',
     priority: 'medium',
     department: 'DEV',
+    topic_category: '',
+    research_source: 'Manual',
+    added_by: '',
     status: 'pending',
     notes: '',
   });
 
   const [errors, setErrors] = useState<Partial<Record<keyof VideoFormData, string>>>({});
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   useEffect(() => {
     if (initialData) {
@@ -32,8 +40,15 @@ export function VideoForm({ initialData, onSubmit, onCancel, isLoading }: VideoF
         video_title: initialData.video_title,
         channel_name: initialData.channel_name || '',
         duration_minutes: initialData.duration_minutes || 0,
+        views: initialData.views || 0,
+        likes: initialData.likes || 0,
+        comments: initialData.comments || 0,
+        publish_date: initialData.publish_date || '',
         priority: initialData.priority,
         department: initialData.department,
+        topic_category: initialData.topic_category || '',
+        research_source: initialData.research_source || 'Manual',
+        added_by: initialData.added_by || '',
         status: initialData.status,
         notes: initialData.notes || '',
       });
@@ -42,9 +57,10 @@ export function VideoForm({ initialData, onSubmit, onCancel, isLoading }: VideoF
 
   const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
+    const numericFields = ['duration_minutes', 'views', 'likes', 'comments'];
     setFormData(prev => ({
       ...prev,
-      [name]: name === 'duration_minutes' ? parseInt(value) || 0 : value
+      [name]: numericFields.includes(name) ? parseInt(value) || 0 : value
     }));
     if (errors[name as keyof VideoFormData]) {
       setErrors(prev => ({ ...prev, [name]: undefined }));
@@ -149,6 +165,44 @@ export function VideoForm({ initialData, onSubmit, onCancel, isLoading }: VideoF
           {errors.duration_minutes && <p className="text-red-500 text-xs mt-1">{errors.duration_minutes}</p>}
         </div>
 
+        {/* Research Classification */}
+        <div>
+          <label htmlFor="topic_category" className={labelClass}>
+            <Folder size={14} className="inline mr-1" />
+            Topic Category
+          </label>
+          <select
+            id="topic_category"
+            name="topic_category"
+            className={inputClass}
+            value={formData.topic_category || ''}
+            onChange={handleChange}
+          >
+            <option value="">Select topic...</option>
+            {TOPIC_CATEGORIES.map(cat => (
+              <option key={cat} value={cat}>{cat}</option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label htmlFor="research_source" className={labelClass}>
+            <Search size={14} className="inline mr-1" />
+            Research Source
+          </label>
+          <select
+            id="research_source"
+            name="research_source"
+            className={inputClass}
+            value={formData.research_source || 'Manual'}
+            onChange={handleChange}
+          >
+            {RESEARCH_SOURCES.map(src => (
+              <option key={src} value={src}>{src}</option>
+            ))}
+          </select>
+        </div>
+
         <div>
           <label htmlFor="department" className={labelClass}>Department</label>
           <select
@@ -177,6 +231,7 @@ export function VideoForm({ initialData, onSubmit, onCancel, isLoading }: VideoF
               <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
             ))}
           </select>
+          <p className="text-gray-400 text-xs mt-1">Auto-calculated from metrics if views/likes provided</p>
         </div>
 
         <div className="col-span-1 md:col-span-2">
@@ -193,6 +248,102 @@ export function VideoForm({ initialData, onSubmit, onCancel, isLoading }: VideoF
             ))}
           </select>
         </div>
+
+        {/* Advanced Metrics Toggle */}
+        <div className="col-span-1 md:col-span-2">
+          <button
+            type="button"
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 transition-colors"
+          >
+            <TrendingUp size={16} />
+            {showAdvanced ? 'Hide' : 'Show'} Video Metrics (for Priority Score calculation)
+          </button>
+        </div>
+
+        {/* Advanced Metrics Section */}
+        {showAdvanced && (
+          <>
+            <div>
+              <label htmlFor="views" className={labelClass}>
+                <Eye size={14} className="inline mr-1" />
+                Views
+              </label>
+              <input
+                id="views"
+                name="views"
+                type="number"
+                min="0"
+                className={inputClass}
+                placeholder="e.g., 150000"
+                value={formData.views || 0}
+                onChange={handleChange}
+              />
+            </div>
+
+            <div>
+              <label htmlFor="likes" className={labelClass}>
+                <ThumbsUp size={14} className="inline mr-1" />
+                Likes
+              </label>
+              <input
+                id="likes"
+                name="likes"
+                type="number"
+                min="0"
+                className={inputClass}
+                placeholder="e.g., 5000"
+                value={formData.likes || 0}
+                onChange={handleChange}
+              />
+            </div>
+
+            <div>
+              <label htmlFor="comments" className={labelClass}>
+                <MessageSquare size={14} className="inline mr-1" />
+                Comments
+              </label>
+              <input
+                id="comments"
+                name="comments"
+                type="number"
+                min="0"
+                className={inputClass}
+                placeholder="e.g., 200"
+                value={formData.comments || 0}
+                onChange={handleChange}
+              />
+            </div>
+
+            <div>
+              <label htmlFor="publish_date" className={labelClass}>
+                <Calendar size={14} className="inline mr-1" />
+                Publish Date
+              </label>
+              <input
+                id="publish_date"
+                name="publish_date"
+                type="date"
+                className={inputClass}
+                value={formData.publish_date || ''}
+                onChange={handleChange}
+              />
+            </div>
+
+            <div>
+              <label htmlFor="added_by" className={labelClass}>Added By</label>
+              <input
+                id="added_by"
+                name="added_by"
+                type="text"
+                className={inputClass}
+                placeholder="e.g., john@remotehelpers.com"
+                value={formData.added_by || ''}
+                onChange={handleChange}
+              />
+            </div>
+          </>
+        )}
 
         <div className="col-span-1 md:col-span-2">
           <label htmlFor="notes" className={labelClass}>Notes</label>

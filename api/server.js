@@ -20,6 +20,67 @@ app.use(cors());
 app.use(express.json());
 
 // =====================================================
+// UTILITY FUNCTIONS
+// =====================================================
+
+/**
+ * Calculate Priority Score (0-100) based on video metadata
+ * Algorithm matches Python script: calculate_priority.py
+ * 
+ * - Views (30% weight) - 1M views = 30 pts
+ * - Likes (20% weight) - 50K likes = 20 pts  
+ * - Recency (30% weight) - newer = higher
+ * - Engagement (20% weight) - likes/views ratio
+ */
+function calculatePriorityScore(views = 0, likes = 0, publishDate = null) {
+  // Views score (max 30 points)
+  const viewsScore = Math.min(30, (views / 1000000) * 30);
+  
+  // Likes score (max 20 points)
+  const likesScore = Math.min(20, (likes / 50000) * 20);
+  
+  // Recency score (max 30 points)
+  let recencyScore = 30;
+  if (publishDate) {
+    const pubDate = new Date(publishDate);
+    const daysSincePublish = Math.floor((Date.now() - pubDate.getTime()) / (1000 * 60 * 60 * 24));
+    recencyScore = Math.max(0, 30 - (daysSincePublish / 365) * 30);
+  }
+  
+  // Engagement score (max 20 points)
+  let engagementScore = 0;
+  if (views > 0) {
+    const engagementRate = likes / views;
+    engagementScore = Math.min(20, engagementRate * 2000); // 1% = 20 points
+  }
+  
+  const totalScore = viewsScore + likesScore + recencyScore + engagementScore;
+  return Math.round(totalScore * 100) / 100;
+}
+
+/**
+ * Extract YouTube video ID from URL
+ * Real YouTube IDs are exactly 11 characters, but we also support shorter test IDs
+ */
+function extractVideoId(url) {
+  if (!url) return null;
+  
+  // Try to extract v= parameter (most common)
+  const vParamMatch = url.match(/[?&]v=([a-zA-Z0-9_-]+)/);
+  if (vParamMatch) return vParamMatch[1];
+  
+  // Try youtu.be/ID format
+  const shortMatch = url.match(/youtu\.be\/([a-zA-Z0-9_-]+)/);
+  if (shortMatch) return shortMatch[1];
+  
+  // Try embed/ID format
+  const embedMatch = url.match(/youtube\.com\/embed\/([a-zA-Z0-9_-]+)/);
+  if (embedMatch) return embedMatch[1];
+  
+  return null;
+}
+
+// =====================================================
 // SEARCH QUEUE API
 // =====================================================
 
@@ -373,6 +434,35 @@ app.get('/api/video-queue', async (req, res) => {
 // POST /api/video-queue - Create new video queue entry
 app.post('/api/video-queue', async (req, res) => {
   try {
+    // Extract video ID from URL
+    const videoId = extractVideoId(req.body.video_url);
+    
+    console.log('📹 Creating video entry:');
+    console.log('   URL:', req.body.video_url);
+    console.log('   Extracted Video ID:', videoId);
+    console.log('   Views:', req.body.views, '| Likes:', req.body.likes);
+    
+    // ========== DUPLICATE DETECTION ==========
+    if (videoId) {
+      const existingVideo = await prisma.videoQueue.findFirst({
+        where: { videoId: videoId }
+      });
+      
+      if (existingVideo) {
+        return res.status(409).json({
+          success: false,
+          error: 'Video already exists in queue',
+          duplicate: true,
+          existing: {
+            queue_id: existingVideo.queueId,
+            video_title: existingVideo.videoTitle,
+            status: existingVideo.status,
+            added_date: existingVideo.addedDate
+          }
+        });
+      }
+    }
+    
     // Generate new queue ID
     const lastVideo = await prisma.videoQueue.findFirst({
       where: { queueId: { not: null } },
@@ -386,11 +476,18 @@ app.post('/api/video-queue', async (req, res) => {
     }
     const queueId = `VQ-${String(nextNum).padStart(3, '0')}`;
     
-    // Extract video ID from URL
-    let videoId = req.body.video_id;
-    if (!videoId && req.body.video_url) {
-      const match = req.body.video_url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/);
-      if (match) videoId = match[1];
+    // ========== CALCULATE PRIORITY SCORE ==========
+    const views = parseInt(req.body.views) || 0;
+    const likes = parseInt(req.body.likes) || 0;
+    const publishDate = req.body.publish_date || null;
+    const priorityScore = calculatePriorityScore(views, likes, publishDate);
+    
+    // Determine priority level from score
+    let priorityLevel = req.body.priority || 'medium';
+    if (!req.body.priority && priorityScore > 0) {
+      if (priorityScore >= 60) priorityLevel = 'high';
+      else if (priorityScore >= 30) priorityLevel = 'medium';
+      else priorityLevel = 'low';
     }
     
     const newEntry = await prisma.videoQueue.create({
@@ -401,11 +498,17 @@ app.post('/api/video-queue', async (req, res) => {
         videoTitle: req.body.video_title,
         channelName: req.body.channel_name || null,
         durationMinutes: req.body.duration_minutes || 0,
-        priority: req.body.priority || 'medium',
+        duration: req.body.duration || null,
+        views: views,
+        likes: likes,
+        comments: parseInt(req.body.comments) || 0,
+        publishDate: publishDate ? new Date(publishDate) : null,
+        priority: priorityLevel,
+        priorityScore: priorityScore,
         status: req.body.status || 'pending',
         department: req.body.department,
-        topicCategory: req.body.topic_category,
-        researchSource: req.body.research_source,
+        topicCategory: req.body.topic_category || null,
+        researchSource: req.body.research_source || null,
         addedBy: req.body.added_by || 'System',
         addedDate: new Date(),
         notes: req.body.notes || null,
@@ -413,7 +516,20 @@ app.post('/api/video-queue', async (req, res) => {
       },
     });
     
-    res.json({ success: true, data: { queue_id: newEntry.queueId, ...newEntry } });
+    console.log('✅ Video created successfully:');
+    console.log('   Queue ID:', newEntry.queueId);
+    console.log('   Video ID in DB:', newEntry.videoId);
+    console.log('   Priority Score:', priorityScore);
+    
+    res.json({ 
+      success: true, 
+      data: { 
+        queue_id: newEntry.queueId,
+        video_id: newEntry.videoId,
+        priority_score: priorityScore,
+        ...newEntry 
+      } 
+    });
   } catch (error) {
     console.error('Error creating video queue entry:', error);
     res.status(500).json({ success: false, error: error.message });
@@ -612,14 +728,24 @@ app.post('/api/video-queue/sync-csv', async (req, res) => {
   }
 });
 
-// GET /api/video-queue/export - Export video queue to CSV or JSON
+// GET /api/video-queue/export - Export video queue to CSV, JSON or Markdown
 app.get('/api/video-queue/export', async (req, res) => {
   try {
     const format = req.query.format || 'json';
+    const statusFilter = req.query.status; // Optional status filter
+    
+    let whereClause = {};
+    if (statusFilter) {
+      whereClause.status = statusFilter;
+    }
     
     const data = await prisma.videoQueue.findMany({
-      orderBy: { createdAt: 'desc' },
+      where: whereClause,
+      orderBy: { priorityScore: 'desc' },
     });
+    
+    const dateStr = new Date().toISOString().split('T')[0];
+    const timeStr = new Date().toLocaleTimeString('en-US', { hour12: false });
     
     if (format === 'csv') {
       // CSV Export
@@ -659,10 +785,122 @@ app.get('/api/video-queue/export', async (req, res) => {
       const csv = [headers.join(','), ...rows].join('\n');
       
       res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', `attachment; filename="video_queue_export_${new Date().toISOString().split('T')[0]}.csv"`);
+      res.setHeader('Content-Disposition', `attachment; filename="video_queue_export_${dateStr}.csv"`);
       res.send(csv);
+      
+    } else if (format === 'markdown' || format === 'md') {
+      // Markdown Export
+      let md = `# 📹 Video Queue Export\n\n`;
+      md += `**Export Date:** ${dateStr} ${timeStr}\n\n`;
+      md += `**Total Videos:** ${data.length}\n\n`;
+      if (statusFilter) {
+        md += `**Status Filter:** ${statusFilter}\n\n`;
+      }
+      md += `---\n\n`;
+      
+      // Summary Statistics
+      md += `## 📊 Summary\n\n`;
+      
+      // Status breakdown
+      const statusCounts = {};
+      const topicCounts = {};
+      const sourceCounts = {};
+      const deptCounts = {};
+      
+      data.forEach(item => {
+        statusCounts[item.status] = (statusCounts[item.status] || 0) + 1;
+        if (item.topicCategory) topicCounts[item.topicCategory] = (topicCounts[item.topicCategory] || 0) + 1;
+        if (item.researchSource) sourceCounts[item.researchSource] = (sourceCounts[item.researchSource] || 0) + 1;
+        if (item.department) deptCounts[item.department] = (deptCounts[item.department] || 0) + 1;
+      });
+      
+      md += `### By Status\n\n`;
+      Object.entries(statusCounts).sort((a, b) => b[1] - a[1]).forEach(([status, count]) => {
+        const pct = ((count / data.length) * 100).toFixed(1);
+        md += `- **${status}**: ${count} (${pct}%)\n`;
+      });
+      md += `\n`;
+      
+      if (Object.keys(topicCounts).length > 0) {
+        md += `### Top Topics\n\n`;
+        Object.entries(topicCounts).sort((a, b) => b[1] - a[1]).slice(0, 5).forEach(([topic, count]) => {
+          md += `- **${topic}**: ${count}\n`;
+        });
+        md += `\n`;
+      }
+      
+      if (Object.keys(sourceCounts).length > 0) {
+        md += `### Research Sources\n\n`;
+        Object.entries(sourceCounts).sort((a, b) => b[1] - a[1]).forEach(([source, count]) => {
+          md += `- **${source}**: ${count}\n`;
+        });
+        md += `\n`;
+      }
+      
+      if (Object.keys(deptCounts).length > 0) {
+        md += `### By Department\n\n`;
+        Object.entries(deptCounts).sort((a, b) => b[1] - a[1]).forEach(([dept, count]) => {
+          md += `- **${dept}**: ${count}\n`;
+        });
+        md += `\n`;
+      }
+      
+      md += `---\n\n`;
+      
+      // Videos Table
+      md += `## 📋 Videos Table\n\n`;
+      md += `| Queue ID | Title | Channel | Topic | Status | Priority | Department |\n`;
+      md += `|----------|-------|---------|-------|--------|----------|------------|\n`;
+      
+      data.forEach(item => {
+        const title = (item.videoTitle || 'Untitled').substring(0, 40) + (item.videoTitle?.length > 40 ? '...' : '');
+        const channel = (item.channelName || '-').substring(0, 20);
+        const topic = (item.topicCategory || '-').substring(0, 15);
+        md += `| ${item.queueId || '-'} | ${title} | ${channel} | ${topic} | ${item.status || '-'} | ${item.priorityScore || '-'} | ${item.department || '-'} |\n`;
+      });
+      
+      md += `\n---\n\n`;
+      
+      // Detailed Listing
+      md += `## 📝 Detailed Listing\n\n`;
+      
+      data.forEach(item => {
+        md += `### ${item.queueId}: ${item.videoTitle || 'Untitled'}\n\n`;
+        md += `- **Channel:** ${item.channelName || 'Unknown'}\n`;
+        md += `- **Video URL:** ${item.videoUrl || '-'}\n`;
+        md += `- **Views:** ${item.views?.toLocaleString() || 0}\n`;
+        md += `- **Likes:** ${item.likes?.toLocaleString() || 0}\n`;
+        md += `- **Comments:** ${item.comments?.toLocaleString() || 0}\n`;
+        md += `- **Publish Date:** ${item.publishDate?.toISOString().split('T')[0] || '-'}\n`;
+        md += `- **Duration:** ${item.duration || item.durationMinutes + ' min' || '-'}\n`;
+        md += `- **Topic:** ${item.topicCategory || '-'}\n`;
+        md += `- **Research Source:** ${item.researchSource || '-'}\n`;
+        md += `- **Priority Score:** ${item.priorityScore || '-'}/100\n`;
+        md += `- **Status:** ${item.status || '-'}\n`;
+        md += `- **Department:** ${item.department || '-'}\n`;
+        md += `- **Added By:** ${item.addedBy || '-'} on ${item.addedDate?.toISOString().split('T')[0] || '-'}\n`;
+        
+        if (item.selectedBy) {
+          md += `- **Selected By:** ${item.selectedBy} on ${item.selectedDate?.toISOString().split('T')[0] || '-'}\n`;
+        }
+        if (item.parsedDate) {
+          md += `- **Parsed Date:** ${item.parsedDate.toISOString().split('T')[0]}\n`;
+        }
+        if (item.notes) {
+          md += `- **Notes:** ${item.notes}\n`;
+        }
+        md += `\n`;
+      });
+      
+      md += `---\n\n`;
+      md += `*Generated by REMS Video Queue System*\n`;
+      
+      res.setHeader('Content-Type', 'text/markdown');
+      res.setHeader('Content-Disposition', `attachment; filename="video_queue_export_${dateStr}.md"`);
+      res.send(md);
+      
     } else {
-      // JSON Export
+      // JSON Export (default)
       const jsonData = data.map(item => ({
         queue_id: item.queueId,
         video_id: item.videoId,
@@ -690,7 +928,7 @@ app.get('/api/video-queue/export', async (req, res) => {
       }));
       
       res.setHeader('Content-Type', 'application/json');
-      res.setHeader('Content-Disposition', `attachment; filename="video_queue_export_${new Date().toISOString().split('T')[0]}.json"`);
+      res.setHeader('Content-Disposition', `attachment; filename="video_queue_export_${dateStr}.json"`);
       res.json(jsonData);
     }
   } catch (error) {

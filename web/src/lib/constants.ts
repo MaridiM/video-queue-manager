@@ -14,6 +14,28 @@ export const STATUSES = [
 
 export const PRIORITIES = ['low', 'medium', 'high'] as const;
 
+// Research sources matching Python scripts
+export const RESEARCH_SOURCES = [
+  'Perplexity',
+  'Gemini', 
+  'GPT',
+  'DeepSeek',
+  'YouTube',
+  'Manual'
+] as const;
+
+// Topic categories for video research
+export const TOPIC_CATEGORIES = [
+  'AI Development',
+  'Video Editing',
+  'Design Research',
+  'Social Media',
+  'Marketing',
+  'Automation',
+  'Workflow',
+  'Other'
+] as const;
+
 export const FILTER_OPTIONS = {
   status: [
     { value: 'pending', label: 'Pending', count: 24 },
