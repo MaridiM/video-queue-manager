@@ -1,254 +1,464 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import fs from 'fs';
-import path from 'path';
-import Papa from 'papaparse';
-import dotenv from 'dotenv';
+import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import pg from 'pg';
 
-dotenv.config();
+// Initialize Prisma with PostgreSQL adapter
+const connectionString = process.env.DATABASE_URL;
+const pool = new pg.Pool({ connectionString });
+const adapter = new PrismaPg(pool);
+const prisma = new PrismaClient({ adapter });
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-const DROPBOX_ROOT = process.env.DROPBOX_ROOT || '.';
 
 app.use(cors());
 app.use(express.json());
 
-// Helper: Read and parse CSV file
-function readCSV(filePath) {
-  return new Promise((resolve, reject) => {
-    const fullPath = path.join(DROPBOX_ROOT, filePath);
-    
-    if (!fs.existsSync(fullPath)) {
-      return resolve({ data: [], error: `File not found: ${fullPath}` });
-    }
-    
-    const fileContent = fs.readFileSync(fullPath, 'utf8');
-    const result = Papa.parse(fileContent, {
-      header: true,
-      skipEmptyLines: true,
-      dynamicTyping: true,
-    });
-    
-    resolve({ data: result.data, errors: result.errors });
-  });
-}
+// =====================================================
+// SEARCH QUEUE API
+// =====================================================
 
-// Helper: Check if file exists
-function checkFileExists(filePath) {
-  const fullPath = path.join(DROPBOX_ROOT, filePath);
-  return fs.existsSync(fullPath);
-}
-
-// API: Get Master Research List
-app.get('/api/researches', async (req, res) => {
-  try {
-    const result = await readCSV('ENTITIES/TASK_MANAGERS/RESEARCHES/RESEARCHES_Master_List.csv');
-    
-    // Add file existence check for each research
-    const dataWithFileCheck = result.data.map(item => ({
-      ...item,
-      fileExists: item.File_Path ? checkFileExists(item.File_Path) : false
-    }));
-    
-    res.json({ success: true, data: dataWithFileCheck });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// Search Queue CSV Path
-const SEARCH_QUEUE_CSV = 'ENTITIES/TASK_MANAGERS/RESEARCHES/00_SEARCH_QUEUE/Search_Queue_Master.csv';
-
-// API: Get Search Queue
+// GET /api/search-queue - Get all search queue entries
 app.get('/api/search-queue', async (req, res) => {
   try {
-    const result = await readCSV(SEARCH_QUEUE_CSV);
-    res.json({ success: true, data: result.data });
+    const data = await prisma.searchQueue.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
+    
+    // Transform to match frontend expected format
+    const transformed = data.map(item => ({
+      search_id: item.searchId,
+      employee: item.employee,
+      department: item.department,
+      topic: item.topic,
+      search_query: item.searchQuery,
+      status: item.status === 'In_Progress' ? 'In Progress' : item.status,
+      videos_found: item.videosFound,
+      date_assigned: item.dateAssigned?.toISOString().split('T')[0],
+      date_completed: item.dateCompleted?.toISOString().split('T')[0] || null,
+      notes: item.notes,
+      perplexity_creativity: item.perplexityCreativity,
+      perplexity_structure_mode: item.perplexityStructureMode,
+      results_count: item.resultsCount,
+      error_message: item.errorMessage,
+      created_at: item.createdAt?.toISOString(),
+      updated_at: item.updatedAt?.toISOString(),
+    }));
+    
+    res.json({ success: true, data: transformed });
   } catch (error) {
+    console.error('Error fetching search queue:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// Video Queue CSV Path
-const VIDEO_QUEUE_CSV = 'ENTITIES/TASK_MANAGERS/RESEARCHES/01_VIDEO_QUEUE/Video_Queue_Master.csv';
-
-// Helper: Write CSV file
-function writeCSV(filePath, data) {
-  const fullPath = path.join(DROPBOX_ROOT, filePath);
-  const dir = path.dirname(fullPath);
-  
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  
-  const csv = Papa.unparse(data);
-  fs.writeFileSync(fullPath, csv, 'utf8');
-}
-
-// API: Get Video Queue
-app.get('/api/video-queue', async (req, res) => {
+// POST /api/search-queue - Create new search queue entry
+app.post('/api/search-queue', async (req, res) => {
   try {
-    const result = await readCSV(VIDEO_QUEUE_CSV);
-    res.json({ success: true, data: result.data });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// API: Add Video to Queue
-app.post('/api/video-queue', async (req, res) => {
-  try {
-    const result = await readCSV(VIDEO_QUEUE_CSV);
-    const data = result.data || [];
+    // Generate new search ID
+    const lastSearch = await prisma.searchQueue.findFirst({
+      orderBy: { searchId: 'desc' },
+    });
     
-    // Generate new ID
-    const maxId = data.reduce((max, item) => {
-      const id = parseInt(item.Queue_ID?.replace('VQ-', '') || '0');
-      return id > max ? id : max;
-    }, 0);
-    
-    const newVideo = {
-      Queue_ID: `VQ-${String(maxId + 1).padStart(3, '0')}`,
-      Video_Title: req.body.video_title,
-      Video_URL: req.body.video_url,
-      Channel_Name: req.body.channel_name || '',
-      Duration_Minutes: req.body.duration_minutes || 0,
-      Topic_Category: req.body.department || 'DEV',
-      Research_Source: req.body.research_source || '',
-      Priority_Score: req.body.priority === 'high' ? 85 : req.body.priority === 'medium' ? 50 : 25,
-      Status: req.body.status || 'Pending',
-      Added_By: req.body.added_by || 'System',
-      Added_Date: new Date().toISOString().split('T')[0],
-      Notes: req.body.notes || '',
-      Views: 0,
-      Likes: 0,
-      Publish_Date: '',
-      Duration: `${req.body.duration_minutes || 0}m`,
-    };
-    
-    data.unshift(newVideo);
-    writeCSV(VIDEO_QUEUE_CSV, data);
-    
-    res.json({ success: true, data: newVideo });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// API: Update Video in Queue
-app.put('/api/video-queue/:id', async (req, res) => {
-  try {
-    const result = await readCSV(VIDEO_QUEUE_CSV);
-    const data = result.data || [];
-    
-    const idx = data.findIndex(item => item.Queue_ID === req.params.id);
-    if (idx === -1) {
-      return res.status(404).json({ success: false, error: 'Video not found' });
+    let nextNum = 1;
+    if (lastSearch?.searchId) {
+      const match = lastSearch.searchId.match(/SEARCH-(\d+)/);
+      if (match) nextNum = parseInt(match[1]) + 1;
     }
+    const searchId = `SEARCH-${String(nextNum).padStart(3, '0')}`;
     
-    // Update fields
-    data[idx] = {
-      ...data[idx],
-      Video_Title: req.body.video_title ?? data[idx].Video_Title,
-      Video_URL: req.body.video_url ?? data[idx].Video_URL,
-      Channel_Name: req.body.channel_name ?? data[idx].Channel_Name,
-      Duration_Minutes: req.body.duration_minutes ?? data[idx].Duration_Minutes,
-      Topic_Category: req.body.department ?? data[idx].Topic_Category,
-      Priority_Score: req.body.priority === 'high' ? 85 : req.body.priority === 'medium' ? 50 : req.body.priority === 'low' ? 25 : data[idx].Priority_Score,
-      Status: req.body.status ?? data[idx].Status,
-      Notes: req.body.notes ?? data[idx].Notes,
-      Duration: req.body.duration_minutes ? `${req.body.duration_minutes}m` : data[idx].Duration,
-    };
+    // Map status
+    let status = req.body.status || 'Assigned';
+    if (status === 'In Progress') status = 'In_Progress';
     
-    writeCSV(VIDEO_QUEUE_CSV, data);
+    const newEntry = await prisma.searchQueue.create({
+      data: {
+        searchId,
+        employee: req.body.employee || null,
+        department: req.body.department,
+        topic: req.body.topic,
+        searchQuery: req.body.search_query,
+        status,
+        videosFound: req.body.videos_found || 0,
+        dateAssigned: new Date(),
+        notes: req.body.notes || '',
+        perplexityCreativity: req.body.perplexity_creativity || 0.5,
+        perplexityStructureMode: req.body.perplexity_structure_mode ?? true,
+        resultsCount: req.body.results_count || 0,
+      },
+    });
     
-    res.json({ success: true, data: data[idx] });
+    res.json({ success: true, data: { search_id: newEntry.searchId, ...newEntry } });
   } catch (error) {
+    console.error('Error creating search queue entry:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// API: Delete Video from Queue
-app.delete('/api/video-queue/:id', async (req, res) => {
+// PUT /api/search-queue/:id - Update search queue entry
+app.put('/api/search-queue/:id', async (req, res) => {
   try {
-    const result = await readCSV(VIDEO_QUEUE_CSV);
-    const data = result.data || [];
+    const { id } = req.params;
     
-    const idx = data.findIndex(item => item.Queue_ID === req.params.id);
-    if (idx === -1) {
-      return res.status(404).json({ success: false, error: 'Video not found' });
-    }
+    // Map status
+    let status = req.body.status;
+    if (status === 'In Progress') status = 'In_Progress';
     
-    const deleted = data.splice(idx, 1)[0];
-    writeCSV(VIDEO_QUEUE_CSV, data);
+    const updateData = {};
+    if (req.body.employee !== undefined) updateData.employee = req.body.employee;
+    if (req.body.department) updateData.department = req.body.department;
+    if (req.body.topic) updateData.topic = req.body.topic;
+    if (req.body.search_query) updateData.searchQuery = req.body.search_query;
+    if (status) updateData.status = status;
+    if (req.body.videos_found !== undefined) updateData.videosFound = req.body.videos_found;
+    if (req.body.notes !== undefined) updateData.notes = req.body.notes;
+    if (req.body.date_completed) updateData.dateCompleted = new Date(req.body.date_completed);
+    if (req.body.error_message !== undefined) updateData.errorMessage = req.body.error_message;
+    
+    const updated = await prisma.searchQueue.update({
+      where: { searchId: id },
+      data: updateData,
+    });
+    
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    console.error('Error updating search queue entry:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// DELETE /api/search-queue/:id - Delete search queue entry
+app.delete('/api/search-queue/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const deleted = await prisma.searchQueue.delete({
+      where: { searchId: id },
+    });
     
     res.json({ success: true, data: deleted });
   } catch (error) {
+    console.error('Error deleting search queue entry:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// API: Get Overview Statistics
+// =====================================================
+// VIDEO QUEUE API
+// =====================================================
+
+// GET /api/video-queue - Get all video queue entries
+app.get('/api/video-queue', async (req, res) => {
+  try {
+    const data = await prisma.videoQueue.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
+    
+    // Transform to match frontend expected format
+    const transformed = data.map(item => ({
+      id: item.id,
+      queue_id: item.queueId,
+      video_id: item.videoId,
+      video_url: item.videoUrl,
+      video_title: item.videoTitle,
+      channel_name: item.channelName,
+      channel_url: item.channelUrl,
+      duration_minutes: item.durationMinutes,
+      duration: item.duration,
+      views: item.views,
+      likes: item.likes,
+      comments: item.comments,
+      publish_date: item.publishDate?.toISOString().split('T')[0],
+      priority: item.priority,
+      status: item.status,
+      department: item.department,
+      topic_category: item.topicCategory,
+      research_source: item.researchSource,
+      priority_score: item.priorityScore,
+      assigned_to: item.assignedTo,
+      added_by: item.addedBy,
+      added_date: item.addedDate?.toISOString().split('T')[0],
+      selected_by: item.selectedBy,
+      selected_date: item.selectedDate?.toISOString().split('T')[0],
+      parsed_date: item.parsedDate?.toISOString().split('T')[0],
+      notes: item.notes,
+      perplexity_search_id: item.perplexitySearchId,
+      created_at: item.createdAt?.toISOString(),
+      updated_at: item.updatedAt?.toISOString(),
+    }));
+    
+    res.json({ success: true, data: transformed });
+  } catch (error) {
+    console.error('Error fetching video queue:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST /api/video-queue - Create new video queue entry
+app.post('/api/video-queue', async (req, res) => {
+  try {
+    // Generate new queue ID
+    const lastVideo = await prisma.videoQueue.findFirst({
+      where: { queueId: { not: null } },
+      orderBy: { queueId: 'desc' },
+    });
+    
+    let nextNum = 1;
+    if (lastVideo?.queueId) {
+      const match = lastVideo.queueId.match(/VQ-(\d+)/);
+      if (match) nextNum = parseInt(match[1]) + 1;
+    }
+    const queueId = `VQ-${String(nextNum).padStart(3, '0')}`;
+    
+    // Extract video ID from URL
+    let videoId = req.body.video_id;
+    if (!videoId && req.body.video_url) {
+      const match = req.body.video_url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/);
+      if (match) videoId = match[1];
+    }
+    
+    const newEntry = await prisma.videoQueue.create({
+      data: {
+        queueId,
+        videoId,
+        videoUrl: req.body.video_url,
+        videoTitle: req.body.video_title,
+        channelName: req.body.channel_name || null,
+        durationMinutes: req.body.duration_minutes || 0,
+        priority: req.body.priority || 'medium',
+        status: req.body.status || 'pending',
+        department: req.body.department,
+        topicCategory: req.body.topic_category,
+        researchSource: req.body.research_source,
+        addedBy: req.body.added_by || 'System',
+        addedDate: new Date(),
+        notes: req.body.notes || null,
+        perplexitySearchId: req.body.perplexity_search_id,
+      },
+    });
+    
+    res.json({ success: true, data: { queue_id: newEntry.queueId, ...newEntry } });
+  } catch (error) {
+    console.error('Error creating video queue entry:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// PUT /api/video-queue/:id - Update video queue entry
+app.put('/api/video-queue/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const updateData = {};
+    if (req.body.video_title) updateData.videoTitle = req.body.video_title;
+    if (req.body.video_url) updateData.videoUrl = req.body.video_url;
+    if (req.body.channel_name !== undefined) updateData.channelName = req.body.channel_name;
+    if (req.body.duration_minutes !== undefined) updateData.durationMinutes = req.body.duration_minutes;
+    if (req.body.priority) updateData.priority = req.body.priority;
+    if (req.body.status) updateData.status = req.body.status;
+    if (req.body.department) updateData.department = req.body.department;
+    if (req.body.notes !== undefined) updateData.notes = req.body.notes;
+    if (req.body.assigned_to !== undefined) updateData.assignedTo = req.body.assigned_to;
+    if (req.body.selected_by) {
+      updateData.selectedBy = req.body.selected_by;
+      updateData.selectedDate = new Date();
+    }
+    
+    // Try to find by queueId first, then by id
+    let updated;
+    try {
+      updated = await prisma.videoQueue.update({
+        where: { queueId: id },
+        data: updateData,
+      });
+    } catch {
+      updated = await prisma.videoQueue.update({
+        where: { id },
+        data: updateData,
+      });
+    }
+    
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    console.error('Error updating video queue entry:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// DELETE /api/video-queue/:id - Delete video queue entry
+app.delete('/api/video-queue/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Try to find by queueId first, then by id
+    let deleted;
+    try {
+      deleted = await prisma.videoQueue.delete({
+        where: { queueId: id },
+      });
+    } catch {
+      deleted = await prisma.videoQueue.delete({
+        where: { id },
+      });
+    }
+    
+    res.json({ success: true, data: deleted });
+  } catch (error) {
+    console.error('Error deleting video queue entry:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// =====================================================
+// DEPARTMENTS API
+// =====================================================
+
+// GET /api/departments - Get all departments
+app.get('/api/departments', async (req, res) => {
+  try {
+    const data = await prisma.department.findMany();
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error fetching departments:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// =====================================================
+// RESEARCHES API
+// =====================================================
+
+// GET /api/researches - Get all researches
+app.get('/api/researches', async (req, res) => {
+  try {
+    const data = await prisma.research.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error fetching researches:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// =====================================================
+// OVERVIEW / STATISTICS API
+// =====================================================
+
+// GET /api/overview - Get dashboard statistics
 app.get('/api/overview', async (req, res) => {
   try {
-    const [researches, searchQueue, videoQueue] = await Promise.all([
-      readCSV('ENTITIES/TASK_MANAGERS/RESEARCHES/RESEARCHES_Master_List.csv'),
-      readCSV(SEARCH_QUEUE_CSV),
-      readCSV(VIDEO_QUEUE_CSV),
+    const [
+      searchQueueCount,
+      videoQueueCount,
+      completedSearches,
+      completedVideos,
+      departmentStats,
+      videoStatusStats,
+    ] = await Promise.all([
+      prisma.searchQueue.count(),
+      prisma.videoQueue.count(),
+      prisma.searchQueue.count({ where: { status: 'Completed' } }),
+      prisma.videoQueue.count({ where: { status: 'complete' } }),
+      prisma.searchQueue.groupBy({
+        by: ['department'],
+        _count: { department: true },
+      }),
+      prisma.videoQueue.groupBy({
+        by: ['status'],
+        _count: { status: true },
+      }),
     ]);
 
-    // Calculate department distribution
-    const departmentCounts = {};
-    researches.data.forEach(item => {
-      const dept = item.Department || 'Unknown';
-      departmentCounts[dept] = (departmentCounts[dept] || 0) + 1;
-    });
-
-    const departmentDistribution = Object.entries(departmentCounts).map(([name, value]) => ({
-      name,
-      value
+    const departmentDistribution = departmentStats.map(d => ({
+      name: d.department,
+      value: d._count.department,
     }));
 
-    // Calculate status distribution for videos
-    const videoStatusCounts = {};
-    videoQueue.data.forEach(item => {
-      const status = item.Status || 'Unknown';
-      videoStatusCounts[status] = (videoStatusCounts[status] || 0) + 1;
-    });
-
-    const videoStatusDistribution = Object.entries(videoStatusCounts).map(([name, value]) => ({
-      name,
-      value
+    const videoStatusDistribution = videoStatusStats.map(s => ({
+      name: s.status,
+      value: s._count.status,
     }));
 
     res.json({
       success: true,
       data: {
-        totalResearches: researches.data.filter(r => r.Status === 'Active' || r.Status === 'active').length,
-        pendingSearchTasks: searchQueue.data.length,
-        videosPendingProcessing: videoQueue.data.filter(v => v.Status !== 'Parsed' && v.Status !== 'Rejected').length,
-        totalVideos: videoQueue.data.length,
+        totalSearches: searchQueueCount,
+        completedSearches,
+        totalVideos: videoQueueCount,
+        completedVideos,
+        pendingSearchTasks: searchQueueCount - completedSearches,
+        videosPendingProcessing: videoQueueCount - completedVideos,
         departmentDistribution,
         videoStatusDistribution,
-      }
+      },
     });
   } catch (error) {
+    console.error('Error fetching overview:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
-    dropboxRoot: DROPBOX_ROOT,
-    timestamp: new Date().toISOString() 
-  });
+// =====================================================
+// HEALTH CHECK
+// =====================================================
+
+app.get('/api/health', async (req, res) => {
+  try {
+    // Test database connection
+    await prisma.$queryRaw`SELECT 1`;
+    
+    res.json({
+      status: 'ok',
+      database: 'connected',
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      database: 'disconnected',
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
 });
+
+// =====================================================
+// START SERVER
+// =====================================================
 
 app.listen(PORT, () => {
   console.log(`🚀 API Server running on http://localhost:${PORT}`);
-  console.log(`📁 DROPBOX_ROOT: ${DROPBOX_ROOT}`);
+  console.log(`📊 Database: PostgreSQL (Prisma)`);
+  console.log(`📁 Endpoints:`);
+  console.log(`   GET  /api/search-queue`);
+  console.log(`   POST /api/search-queue`);
+  console.log(`   PUT  /api/search-queue/:id`);
+  console.log(`   DELETE /api/search-queue/:id`);
+  console.log(`   GET  /api/video-queue`);
+  console.log(`   POST /api/video-queue`);
+  console.log(`   PUT  /api/video-queue/:id`);
+  console.log(`   DELETE /api/video-queue/:id`);
+  console.log(`   GET  /api/departments`);
+  console.log(`   GET  /api/researches`);
+  console.log(`   GET  /api/overview`);
+  console.log(`   GET  /api/health`);
 });
 
+// Graceful shutdown
+process.on('SIGINT', async () => {
+  console.log('\n🛑 Shutting down...');
+  await prisma.$disconnect();
+  await pool.end();
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  console.log('\n🛑 Shutting down...');
+  await prisma.$disconnect();
+  await pool.end();
+  process.exit(0);
+});

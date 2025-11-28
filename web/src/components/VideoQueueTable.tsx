@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { 
   Search, 
   Plus, 
@@ -7,18 +7,43 @@ import {
   ExternalLink,
   Clock,
   Youtube,
-  Filter as FilterIcon
+  Filter as FilterIcon,
+  Loader2,
+  AlertCircle,
+  RefreshCw
 } from 'lucide-react';
-import type { VideoQueueItem, VideoFormData } from '../lib/types';
-import { MOCK_VIDEOS } from '../lib/constants';
+import type { VideoQueueItem, VideoFormData, Status, Priority, Department } from '../lib/types';
+import { videoQueueAPI, type VideoQueueAPI } from '../lib/api';
 import { StatusBadge, PriorityBadge } from './StatusBadge';
 import { Button } from './ui/Button';
 import { Modal } from './ui/Modal';
 import { VideoForm } from './VideoForm';
 import { FilterPanel, type FilterState } from './FilterPanel';
 
+// Transform API response to frontend type
+function transformAPIToFrontend(item: VideoQueueAPI): VideoQueueItem {
+  return {
+    id: item.id,
+    created_at: item.created_at,
+    video_url: item.video_url,
+    video_title: item.video_title,
+    channel_name: item.channel_name || undefined,
+    duration_minutes: item.duration_minutes,
+    priority: (item.priority || 'medium') as Priority,
+    status: (item.status || 'pending') as Status,
+    department: (item.department || 'DEV') as Department,
+    assigned_to: item.assigned_to,
+    added_by: item.added_by,
+    notes: item.notes,
+    perplexity_search_id: item.perplexity_search_id || undefined,
+  };
+}
+
 export function VideoQueueTable() {
-  const [data, setData] = useState<VideoQueueItem[]>(MOCK_VIDEOS);
+  const [data, setData] = useState<VideoQueueItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   
   const [filters, setFilters] = useState<FilterState>({
@@ -33,6 +58,27 @@ export function VideoQueueTable() {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [videoToDelete, setVideoToDelete] = useState<string | null>(null);
 
+  // Fetch data from API
+  const fetchData = async () => {
+    setIsLoading(true);
+    setError(null);
+    
+    const result = await videoQueueAPI.getAll();
+    
+    if (result.success && result.data) {
+      setData(result.data.map(transformAPIToFrontend));
+    } else {
+      setError(result.error || 'Failed to load data');
+    }
+    
+    setIsLoading(false);
+  };
+
+  // Initial fetch
+  useEffect(() => {
+    fetchData();
+  }, []);
+
   const filteredData = useMemo(() => {
     return data.filter(item => {
       const matchesSearch = item.video_title.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -44,36 +90,71 @@ export function VideoQueueTable() {
     });
   }, [data, searchTerm, filters]);
 
-  const handleAdd = (formData: VideoFormData) => {
-    const newVideo: VideoQueueItem = {
-      id: Math.random().toString(36).substr(2, 9),
-      created_at: new Date().toISOString(),
-      added_by: 'current_user@example.com',
-      ...formData,
-      channel_name: formData.channel_name || undefined,
-      notes: formData.notes || null,
-    };
-    setData([newVideo, ...data]);
-    setIsFormOpen(false);
+  const handleAdd = async (formData: VideoFormData) => {
+    setIsSaving(true);
+    
+    const result = await videoQueueAPI.create({
+      video_url: formData.video_url,
+      video_title: formData.video_title,
+      channel_name: formData.channel_name,
+      duration_minutes: formData.duration_minutes,
+      priority: formData.priority,
+      department: formData.department,
+      added_by: 'current_user@remotehelpers.com',
+      notes: formData.notes,
+    });
+    
+    if (result.success) {
+      await fetchData();
+      setIsFormOpen(false);
+    } else {
+      setError(result.error || 'Failed to create');
+    }
+    
+    setIsSaving(false);
   };
 
-  const handleEdit = (formData: VideoFormData) => {
+  const handleEdit = async (formData: VideoFormData) => {
     if (!editingVideo) return;
-    setData(data.map(item => 
-      item.id === editingVideo.id 
-        ? { ...item, ...formData } 
-        : item
-    ));
-    setEditingVideo(null);
-    setIsFormOpen(false);
+    setIsSaving(true);
+    
+    const result = await videoQueueAPI.update(editingVideo.id, {
+      video_title: formData.video_title,
+      video_url: formData.video_url,
+      channel_name: formData.channel_name,
+      duration_minutes: formData.duration_minutes,
+      priority: formData.priority,
+      status: formData.status,
+      department: formData.department,
+      notes: formData.notes,
+    });
+    
+    if (result.success) {
+      await fetchData();
+      setEditingVideo(null);
+      setIsFormOpen(false);
+    } else {
+      setError(result.error || 'Failed to update');
+    }
+    
+    setIsSaving(false);
   };
 
-  const handleDelete = () => {
-    if (videoToDelete) {
-      setData(data.filter(item => item.id !== videoToDelete));
+  const handleDelete = async () => {
+    if (!videoToDelete) return;
+    setIsSaving(true);
+    
+    const result = await videoQueueAPI.delete(videoToDelete);
+    
+    if (result.success) {
+      await fetchData();
       setVideoToDelete(null);
       setIsDeleteOpen(false);
+    } else {
+      setError(result.error || 'Failed to delete');
     }
+    
+    setIsSaving(false);
   };
 
   const openEdit = (video: VideoQueueItem) => {
@@ -86,8 +167,48 @@ export function VideoQueueTable() {
     setIsDeleteOpen(true);
   };
 
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="text-center">
+          <Loader2 size={48} className="animate-spin text-blue-500 mx-auto mb-4" />
+          <p className="text-gray-500">Loading video queue...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state with no data
+  if (error && data.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="text-center">
+          <AlertCircle size={48} className="text-red-500 mx-auto mb-4" />
+          <p className="text-red-600 font-medium mb-2">Failed to load data</p>
+          <p className="text-gray-500 text-sm mb-4">{error}</p>
+          <Button onClick={fetchData}>
+            <RefreshCw size={16} className="mr-2" />
+            Retry
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-8rem)]">
+      {/* Error banner */}
+      {error && (
+        <div className="absolute top-4 right-4 bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2 text-red-700 z-50">
+          <AlertCircle size={16} />
+          <span className="text-sm">{error}</span>
+          <button onClick={() => setError(null)} className="text-red-500 hover:text-red-700 ml-2">
+            ×
+          </button>
+        </div>
+      )}
+
       <div className="lg:hidden">
         <Button variant="outline" onClick={() => setShowMobileFilters(!showMobileFilters)} className="w-full">
           <FilterIcon size={16} className="mr-2" />
@@ -115,10 +236,15 @@ export function VideoQueueTable() {
             />
           </div>
 
-          <Button onClick={() => { setEditingVideo(null); setIsFormOpen(true); }}>
-            <Plus size={18} className="mr-2" />
-            Add Video
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={fetchData} disabled={isLoading}>
+              <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
+            </Button>
+            <Button onClick={() => { setEditingVideo(null); setIsFormOpen(true); }}>
+              <Plus size={18} className="mr-2" />
+              Add Video
+            </Button>
+          </div>
         </div>
 
         <div className="flex-1 rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden flex flex-col">
@@ -176,7 +302,7 @@ export function VideoQueueTable() {
                       <td className="px-6 py-4 text-gray-500">
                         <div className="flex flex-col">
                           <span>{new Date(video.created_at).toLocaleDateString()}</span>
-                          <span className="text-[10px] text-gray-400">{video.added_by.split('@')[0]}</span>
+                          <span className="text-[10px] text-gray-400">{video.added_by?.split('@')[0] || 'System'}</span>
                         </div>
                       </td>
                       <td className="px-6 py-4 text-right">
@@ -213,30 +339,31 @@ export function VideoQueueTable() {
             </table>
           </div>
           <div className="px-6 py-4 border-t border-gray-200 bg-gray-50/30 text-xs text-gray-500 flex justify-between items-center shrink-0">
-            <span>Showing {filteredData.length} entries</span>
-            <div className="flex gap-2">
-              <span className="cursor-not-allowed opacity-50">Previous</span>
-              <span className="cursor-not-allowed opacity-50">Next</span>
-            </div>
+            <span>Showing {filteredData.length} of {data.length} videos</span>
+            <span className="text-emerald-600 flex items-center gap-1">
+              <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+              Live from database
+            </span>
           </div>
         </div>
       </div>
 
       <Modal
         isOpen={isFormOpen}
-        onClose={() => setIsFormOpen(false)}
+        onClose={() => !isSaving && setIsFormOpen(false)}
         title={editingVideo ? "Edit Video" : "Add Video to Queue"}
       >
         <VideoForm 
           initialData={editingVideo}
           onSubmit={editingVideo ? handleEdit : handleAdd}
           onCancel={() => setIsFormOpen(false)}
+          isLoading={isSaving}
         />
       </Modal>
 
       <Modal
         isOpen={isDeleteOpen}
-        onClose={() => setIsDeleteOpen(false)}
+        onClose={() => !isSaving && setIsDeleteOpen(false)}
         title="Delete Video"
       >
         <div className="space-y-4">
@@ -244,12 +371,22 @@ export function VideoQueueTable() {
             Are you sure you want to delete this video from the queue? This action cannot be undone.
           </p>
           <div className="flex justify-end gap-3 pt-4">
-            <Button variant="outline" onClick={() => setIsDeleteOpen(false)}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete}>Delete Video</Button>
+            <Button variant="outline" onClick={() => setIsDeleteOpen(false)} disabled={isSaving}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={isSaving}>
+              {isSaving ? (
+                <>
+                  <Loader2 size={16} className="mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete Video'
+              )}
+            </Button>
           </div>
         </div>
       </Modal>
     </div>
   );
 }
-

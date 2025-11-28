@@ -1,4 +1,5 @@
 import { useState, useEffect, type ChangeEvent, type FormEvent } from 'react';
+import { Loader2 } from 'lucide-react';
 import { Button } from './ui/Button';
 import type { VideoFormData, VideoQueueItem, Priority, Department, Status } from '../lib/types';
 import { DEPARTMENTS, PRIORITIES, STATUSES } from '../lib/constants';
@@ -7,9 +8,10 @@ interface VideoFormProps {
   initialData?: VideoQueueItem | null;
   onSubmit: (data: VideoFormData) => void;
   onCancel: () => void;
+  isLoading?: boolean;
 }
 
-export function VideoForm({ initialData, onSubmit, onCancel }: VideoFormProps) {
+export function VideoForm({ initialData, onSubmit, onCancel, isLoading }: VideoFormProps) {
   const [formData, setFormData] = useState<VideoFormData>({
     video_url: '',
     video_title: '',
@@ -206,11 +208,18 @@ export function VideoForm({ initialData, onSubmit, onCancel }: VideoFormProps) {
       </div>
 
       <div className="flex justify-end gap-3 pt-4 border-t border-gray-100 mt-4">
-        <Button type="button" variant="outline" onClick={onCancel}>
+        <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
           Cancel
         </Button>
-        <Button type="submit">
-          {initialData ? 'Update Video' : 'Add to Queue'}
+        <Button type="submit" disabled={isLoading}>
+          {isLoading ? (
+            <>
+              <Loader2 size={16} className="mr-2 animate-spin" />
+              Saving...
+            </>
+          ) : (
+            initialData ? 'Update Video' : 'Add to Queue'
+          )}
         </Button>
       </div>
     </form>

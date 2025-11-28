@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { 
   Search, 
   Plus, 
@@ -8,13 +8,37 @@ import {
   CheckCircle,
   Clock,
   Loader2,
-  Video
+  Video,
+  RefreshCw
 } from 'lucide-react';
 import type { SearchQuery, SearchFormData, SearchStatus, Department } from '../lib/types';
-import { MOCK_SEARCHES, DEPARTMENTS, SEARCH_STATUS_OPTIONS } from '../lib/constants';
+import { searchQueueAPI, type SearchQueueAPI } from '../lib/api';
+import { DEPARTMENTS, SEARCH_STATUS_OPTIONS } from '../lib/constants';
 import { Button } from './ui/Button';
 import { Badge } from './ui/Badge';
 import { Modal } from './ui/Modal';
+
+// Transform API response to frontend type
+function transformAPIToFrontend(item: SearchQueueAPI): SearchQuery {
+  return {
+    search_id: item.search_id,
+    employee: item.employee,
+    department: item.department as Department,
+    topic: item.topic,
+    search_query: item.search_query,
+    status: item.status as SearchStatus,
+    videos_found: item.videos_found,
+    date_assigned: item.date_assigned,
+    date_completed: item.date_completed,
+    notes: item.notes,
+    perplexity_creativity: item.perplexity_creativity,
+    perplexity_structure_mode: item.perplexity_structure_mode,
+    results_count: item.results_count,
+    error_message: item.error_message,
+    created_at: item.created_at,
+    updated_at: item.updated_at,
+  };
+}
 
 // Status badge using SQL status values
 function getStatusBadge(status: SearchStatus) {
@@ -48,11 +72,13 @@ function getStatusBadge(status: SearchStatus) {
 function SearchForm({ 
   initialData, 
   onSubmit, 
-  onCancel 
+  onCancel,
+  isLoading 
 }: { 
   initialData?: SearchQuery | null;
   onSubmit: (data: SearchFormData) => void;
   onCancel: () => void;
+  isLoading?: boolean;
 }) {
   const [formData, setFormData] = useState<SearchFormData>({
     employee: initialData?.employee || '',
@@ -100,6 +126,7 @@ function SearchForm({
           placeholder="e.g., John Doe or john@remotehelpers.com"
           value={formData.employee}
           onChange={(e) => setFormData({ ...formData, employee: e.target.value })}
+          disabled={isLoading}
         />
         {errors.employee && <p className="text-red-500 text-xs mt-1">{errors.employee}</p>}
       </div>
@@ -113,6 +140,7 @@ function SearchForm({
           className={inputClass}
           value={formData.department}
           onChange={(e) => setFormData({ ...formData, department: e.target.value as Department })}
+          disabled={isLoading}
         >
           {DEPARTMENTS.map(dept => (
             <option key={dept} value={dept}>{dept}</option>
@@ -131,6 +159,7 @@ function SearchForm({
           placeholder="e.g., AI Automation, Video Editing, Social Media"
           value={formData.topic}
           onChange={(e) => setFormData({ ...formData, topic: e.target.value })}
+          disabled={isLoading}
         />
         {errors.topic && <p className="text-red-500 text-xs mt-1">{errors.topic}</p>}
       </div>
@@ -145,6 +174,7 @@ function SearchForm({
           placeholder="e.g., Claude Desktop MCP setup tutorial 2024"
           value={formData.search_query}
           onChange={(e) => setFormData({ ...formData, search_query: e.target.value })}
+          disabled={isLoading}
         />
         {errors.search_query && <p className="text-red-500 text-xs mt-1">{errors.search_query}</p>}
         <p className="text-gray-400 text-xs mt-1">Specific search terms for Perplexity AI</p>
@@ -158,19 +188,34 @@ function SearchForm({
           placeholder="e.g., Focus on recent videos, Avoid tutorials older than 2023"
           value={formData.notes || ''}
           onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+          disabled={isLoading}
         />
       </div>
 
       <div className="flex justify-end gap-3 pt-4 border-t border-gray-100 mt-4">
-        <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
-        <Button type="submit">{initialData ? 'Update Search' : 'Add Search'}</Button>
+        <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={isLoading}>
+          {isLoading ? (
+            <>
+              <Loader2 size={16} className="mr-2 animate-spin" />
+              Saving...
+            </>
+          ) : (
+            initialData ? 'Update Search' : 'Add Search'
+          )}
+        </Button>
       </div>
     </form>
   );
 }
 
 export function SearchQueueTable() {
-  const [data, setData] = useState<SearchQuery[]>(MOCK_SEARCHES);
+  const [data, setData] = useState<SearchQuery[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [departmentFilter, setDepartmentFilter] = useState<string>('all');
@@ -179,6 +224,27 @@ export function SearchQueueTable() {
   const [editingSearch, setEditingSearch] = useState<SearchQuery | null>(null);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [searchToDelete, setSearchToDelete] = useState<string | null>(null);
+
+  // Fetch data from API
+  const fetchData = async () => {
+    setIsLoading(true);
+    setError(null);
+    
+    const result = await searchQueueAPI.getAll();
+    
+    if (result.success && result.data) {
+      setData(result.data.map(transformAPIToFrontend));
+    } else {
+      setError(result.error || 'Failed to load data');
+    }
+    
+    setIsLoading(false);
+  };
+
+  // Initial fetch
+  useEffect(() => {
+    fetchData();
+  }, []);
 
   const filteredData = useMemo(() => {
     return data.filter(item => {
@@ -199,62 +265,65 @@ export function SearchQueueTable() {
     completed: data.filter(s => s.status === 'Completed').length,
   }), [data]);
 
-  const handleAdd = (formData: SearchFormData) => {
-    // Generate SEARCH-XXX ID like Python script
-    const maxId = data.reduce((max, item) => {
-      const match = item.search_id.match(/SEARCH-(\d+)/);
-      return match ? Math.max(max, parseInt(match[1])) : max;
-    }, 0);
-    const newId = `SEARCH-${String(maxId + 1).padStart(3, '0')}`;
-    const now = new Date().toISOString();
-
-    const newSearch: SearchQuery = {
-      search_id: newId,
+  const handleAdd = async (formData: SearchFormData) => {
+    setIsSaving(true);
+    
+    const result = await searchQueueAPI.create({
       employee: formData.employee,
       department: formData.department,
       topic: formData.topic,
       search_query: formData.search_query,
-      status: 'Assigned',
-      videos_found: 0,
-      date_assigned: now.split('T')[0],
-      date_completed: null,
-      notes: formData.notes || '',
-      perplexity_creativity: 0.5,
-      perplexity_structure_mode: true,
-      results_count: 0,
-      error_message: null,
-      created_at: now,
-      updated_at: now,
-    };
-    setData([newSearch, ...data]);
-    setIsFormOpen(false);
+      notes: formData.notes,
+    });
+    
+    if (result.success) {
+      await fetchData(); // Refresh data
+      setIsFormOpen(false);
+    } else {
+      setError(result.error || 'Failed to create');
+    }
+    
+    setIsSaving(false);
   };
 
-  const handleEdit = (formData: SearchFormData) => {
+  const handleEdit = async (formData: SearchFormData) => {
     if (!editingSearch) return;
-    setData(data.map(item => 
-      item.search_id === editingSearch.search_id 
-        ? { 
-            ...item, 
-            employee: formData.employee,
-            department: formData.department,
-            topic: formData.topic,
-            search_query: formData.search_query,
-            notes: formData.notes || '',
-            updated_at: new Date().toISOString(),
-          } 
-        : item
-    ));
-    setEditingSearch(null);
-    setIsFormOpen(false);
+    setIsSaving(true);
+    
+    const result = await searchQueueAPI.update(editingSearch.search_id, {
+      employee: formData.employee,
+      department: formData.department,
+      topic: formData.topic,
+      search_query: formData.search_query,
+      notes: formData.notes,
+    });
+    
+    if (result.success) {
+      await fetchData(); // Refresh data
+      setEditingSearch(null);
+      setIsFormOpen(false);
+    } else {
+      setError(result.error || 'Failed to update');
+    }
+    
+    setIsSaving(false);
   };
 
-  const handleDelete = () => {
-    if (searchToDelete) {
-      setData(data.filter(item => item.search_id !== searchToDelete));
+  const handleDelete = async () => {
+    if (!searchToDelete) return;
+    setIsSaving(true);
+    
+    const result = await searchQueueAPI.delete(searchToDelete);
+    
+    if (result.success) {
+      await fetchData(); // Refresh data
       setSearchToDelete(null);
       setIsDeleteOpen(false);
+    } else {
+      setError(result.error || 'Failed to delete');
     }
+    
+    setIsSaving(false);
   };
 
   const openEdit = (search: SearchQuery) => {
@@ -267,8 +336,50 @@ export function SearchQueueTable() {
     setIsDeleteOpen(true);
   };
 
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="text-center">
+          <Loader2 size={48} className="animate-spin text-blue-500 mx-auto mb-4" />
+          <p className="text-gray-500">Loading search queue...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error && data.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="text-center">
+          <AlertCircle size={48} className="text-red-500 mx-auto mb-4" />
+          <p className="text-red-600 font-medium mb-2">Failed to load data</p>
+          <p className="text-gray-500 text-sm mb-4">{error}</p>
+          <Button onClick={fetchData}>
+            <RefreshCw size={16} className="mr-2" />
+            Retry
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
+      {/* Error banner */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-red-700">
+            <AlertCircle size={16} />
+            <span className="text-sm">{error}</span>
+          </div>
+          <button onClick={() => setError(null)} className="text-red-500 hover:text-red-700">
+            ×
+          </button>
+        </div>
+      )}
+
       {/* Stats Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="bg-white rounded-lg border border-gray-200 p-3">
@@ -328,6 +439,11 @@ export function SearchQueueTable() {
                 <option key={dept} value={dept}>{dept}</option>
               ))}
             </select>
+
+            {/* Refresh button */}
+            <Button variant="outline" onClick={fetchData} disabled={isLoading}>
+              <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
+            </Button>
           </div>
 
           <Button onClick={() => { setEditingSearch(null); setIsFormOpen(true); }} className="whitespace-nowrap">
@@ -411,7 +527,7 @@ export function SearchQueueTable() {
                     )}
                   </td>
                   <td className="px-4 py-3 text-gray-500 text-xs hidden md:table-cell">
-                    {new Date(search.date_assigned).toLocaleDateString('ru-RU')}
+                    {search.date_assigned ? new Date(search.date_assigned).toLocaleDateString('ru-RU') : '—'}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
@@ -445,28 +561,33 @@ export function SearchQueueTable() {
             )}
           </tbody>
         </table>
-        <div className="px-4 py-3 border-t border-gray-200 bg-gray-50/30 text-xs text-gray-500">
-          Showing {filteredData.length} of {data.length} searches
+        <div className="px-4 py-3 border-t border-gray-200 bg-gray-50/30 text-xs text-gray-500 flex justify-between items-center">
+          <span>Showing {filteredData.length} of {data.length} searches</span>
+          <span className="text-emerald-600 flex items-center gap-1">
+            <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+            Live from database
+          </span>
         </div>
       </div>
 
       {/* Add/Edit Dialog */}
       <Modal
         isOpen={isFormOpen}
-        onClose={() => setIsFormOpen(false)}
+        onClose={() => !isSaving && setIsFormOpen(false)}
         title={editingSearch ? "Edit Search Query" : "Add New Search Query"}
       >
         <SearchForm 
           initialData={editingSearch}
           onSubmit={editingSearch ? handleEdit : handleAdd}
           onCancel={() => setIsFormOpen(false)}
+          isLoading={isSaving}
         />
       </Modal>
 
       {/* Delete Confirmation Dialog */}
       <Modal
         isOpen={isDeleteOpen}
-        onClose={() => setIsDeleteOpen(false)}
+        onClose={() => !isSaving && setIsDeleteOpen(false)}
         title="Delete Search Query"
       >
         <div className="space-y-4">
@@ -474,8 +595,19 @@ export function SearchQueueTable() {
             Are you sure you want to delete this search query? This action cannot be undone.
           </p>
           <div className="flex justify-end gap-3 pt-4">
-            <Button variant="outline" onClick={() => setIsDeleteOpen(false)}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete}>Delete</Button>
+            <Button variant="outline" onClick={() => setIsDeleteOpen(false)} disabled={isSaving}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={isSaving}>
+              {isSaving ? (
+                <>
+                  <Loader2 size={16} className="mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete'
+              )}
+            </Button>
           </div>
         </div>
       </Modal>

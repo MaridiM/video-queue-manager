@@ -1,0 +1,279 @@
+// Prisma Schema for REMS Application
+// PostgreSQL database
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// =====================================================
+// ENUMS
+// =====================================================
+
+enum DepartmentCode {
+  DEV
+  SMM
+  VID
+  AID
+  DGN
+  MKT
+}
+
+enum PriorityLevel {
+  low
+  medium
+  high
+}
+
+enum VideoStatus {
+  pending
+  selected
+  transcribing
+  transcribed
+  processing
+  complete
+  rejected
+}
+
+enum SearchStatus {
+  Assigned
+  In_Progress @map("In Progress")
+  Completed
+}
+
+enum EntityType {
+  TOOL
+  WORKFLOW
+  ACTION
+  OBJECT
+}
+
+enum EntityClassification {
+  NEW
+  EXISTING
+  UPDATE
+}
+
+// =====================================================
+// TABLES
+// =====================================================
+
+// Departments reference table
+model Department {
+  code        DepartmentCode @id
+  name        String         @db.VarChar(100)
+  description String?        @db.Text
+  createdAt   DateTime       @default(now()) @map("created_at")
+
+  // Relations
+  searchQueue SearchQueue[]
+  videoQueue  VideoQueue[]
+  employees   Employee[]
+  researches  Research[]
+
+  @@map("departments")
+}
+
+// Employees table
+model Employee {
+  id         String         @id @default(uuid())
+  email      String         @unique @db.VarChar(255)
+  fullName   String         @map("full_name") @db.VarChar(255)
+  department DepartmentCode?
+  isActive   Boolean        @default(true) @map("is_active")
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+
+  // Relations
+  departmentRef Department? @relation(fields: [department], references: [code])
+
+  @@index([email])
+  @@index([department])
+  @@map("employees")
+}
+
+// Search Queue table - matches CSV structure
+model SearchQueue {
+  searchId             String         @id @map("search_id") @db.VarChar(20)
+  employee             String?        @db.VarChar(255)
+  department           DepartmentCode
+  topic                String         @db.VarChar(255)
+  searchQuery          String         @map("search_query") @db.Text
+  status               SearchStatus   @default(Assigned)
+  videosFound          Int            @default(0) @map("videos_found")
+  dateAssigned         DateTime       @default(now()) @map("date_assigned") @db.Date
+  dateCompleted        DateTime?      @map("date_completed") @db.Date
+  notes                String         @default("") @db.Text
+  
+  // Perplexity settings
+  perplexityCreativity    Float      @default(0.5) @map("perplexity_creativity")
+  perplexityStructureMode Boolean    @default(true) @map("perplexity_structure_mode")
+  resultsCount            Int        @default(0) @map("results_count")
+  errorMessage            String?    @map("error_message") @db.Text
+  
+  // Timestamps
+  createdAt            DateTime       @default(now()) @map("created_at")
+  updatedAt            DateTime       @updatedAt @map("updated_at")
+
+  // Relations
+  departmentRef        Department     @relation(fields: [department], references: [code])
+  videos               VideoQueue[]
+
+  @@index([status])
+  @@index([department])
+  @@index([employee])
+  @@index([dateAssigned])
+  @@map("search_queue")
+}
+
+// Video Queue table - matches CSV structure
+model VideoQueue {
+  id              String         @id @default(uuid())
+  queueId         String?        @unique @map("queue_id") @db.VarChar(20)
+  videoId         String?        @map("video_id") @db.VarChar(20)
+  videoUrl        String         @map("video_url") @db.Text
+  videoTitle      String         @map("video_title") @db.VarChar(500)
+  channelName     String?        @map("channel_name") @db.VarChar(255)
+  channelUrl      String?        @map("channel_url") @db.Text
+  durationMinutes Int            @default(0) @map("duration_minutes")
+  duration        String?        @db.VarChar(20)
+  views           Int            @default(0)
+  likes           Int            @default(0)
+  comments        Int            @default(0)
+  publishDate     DateTime?      @map("publish_date") @db.Date
+  
+  // Classification
+  priority        PriorityLevel  @default(medium)
+  status          VideoStatus    @default(pending)
+  department      DepartmentCode
+  topicCategory   String?        @map("topic_category") @db.VarChar(255)
+  researchSource  String?        @map("research_source") @db.VarChar(100)
+  priorityScore   Float?         @map("priority_score")
+  
+  // Assignment
+  assignedTo      String?        @map("assigned_to") @db.VarChar(255)
+  addedBy         String         @map("added_by") @db.VarChar(255)
+  addedDate       DateTime?      @map("added_date") @db.Date
+  selectedBy      String?        @map("selected_by") @db.VarChar(255)
+  selectedDate    DateTime?      @map("selected_date") @db.Date
+  parsedDate      DateTime?      @map("parsed_date") @db.Date
+  
+  // Notes and references
+  notes                String?      @db.Text
+  perplexitySearchId   String?      @map("perplexity_search_id") @db.VarChar(20)
+  
+  // Timestamps
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  // Relations
+  departmentRef   Department     @relation(fields: [department], references: [code])
+  searchQueueRef  SearchQueue?   @relation(fields: [perplexitySearchId], references: [searchId])
+  transcriptions  Transcription[]
+  entities        ExtractedEntity[]
+
+  @@index([status])
+  @@index([department])
+  @@index([priority])
+  @@index([assignedTo])
+  @@index([perplexitySearchId])
+  @@index([createdAt])
+  @@map("video_queue")
+}
+
+// Transcriptions table
+model Transcription {
+  id                    String       @id @default(uuid())
+  videoId               String       @map("video_id")
+  rawText               String?      @map("raw_text") @db.Text
+  formattedText         String?      @map("formatted_text") @db.Text
+  language              String       @default("en") @db.VarChar(10)
+  transcriptionSource   String?      @map("transcription_source") @db.VarChar(50)
+  processingTimeSeconds Int?         @map("processing_time_seconds")
+  wordCount             Int?         @map("word_count")
+  status                String       @default("pending") @db.VarChar(50)
+  errorMessage          String?      @map("error_message") @db.Text
+  createdAt             DateTime     @default(now()) @map("created_at")
+  completedAt           DateTime?    @map("completed_at")
+
+  // Relations
+  video                 VideoQueue   @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  entities              ExtractedEntity[]
+
+  @@index([videoId])
+  @@index([status])
+  @@map("transcriptions")
+}
+
+// Extracted Entities table
+model ExtractedEntity {
+  id                    String               @id @default(uuid())
+  entityType            EntityType           @map("entity_type")
+  entityName            String               @map("entity_name") @db.VarChar(255)
+  entityId              String?              @map("entity_id") @db.VarChar(100)
+  classification        EntityClassification @default(NEW)
+  description           String?              @db.Text
+  category              String?              @db.VarChar(100)
+  
+  // Source reference
+  videoId               String?              @map("video_id")
+  videoTitle            String?              @map("video_title") @db.VarChar(500)
+  transcriptionId       String?              @map("transcription_id")
+  
+  // Workflow specific fields
+  stepsCount            Int?                 @map("steps_count")
+  estimatedTimeMinutes  Int?                 @map("estimated_time_minutes")
+  difficulty            String?              @db.VarChar(50)
+  prerequisites         String[]             @default([])
+  outputs               String[]             @default([])
+  
+  // Analysis metadata
+  confidenceScore       Float?               @map("confidence_score")
+  metadata              Json?
+  
+  // Timestamps
+  extractedAt           DateTime             @default(now()) @map("extracted_at")
+  createdAt             DateTime             @default(now()) @map("created_at")
+  updatedAt             DateTime             @updatedAt @map("updated_at")
+
+  // Relations
+  video                 VideoQueue?          @relation(fields: [videoId], references: [id], onDelete: SetNull)
+  transcription         Transcription?       @relation(fields: [transcriptionId], references: [id], onDelete: SetNull)
+
+  @@index([entityType])
+  @@index([classification])
+  @@index([videoId])
+  @@index([entityName])
+  @@index([category])
+  @@map("extracted_entities")
+}
+
+// Research Master List
+model Research {
+  id           String         @id @default(uuid())
+  researchId   String         @unique @map("research_id") @db.VarChar(20)
+  title        String         @db.VarChar(500)
+  description  String?        @db.Text
+  department   DepartmentCode?
+  category     String?        @db.VarChar(100)
+  filePath     String?        @map("file_path") @db.Text
+  status       String         @default("active") @db.VarChar(50)
+  
+  // Counts
+  totalSearches  Int          @default(0) @map("total_searches")
+  totalVideos    Int          @default(0) @map("total_videos")
+  totalEntities  Int          @default(0) @map("total_entities")
+  
+  // Timestamps
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+  completedAt  DateTime?      @map("completed_at")
+
+  // Relations
+  departmentRef Department?   @relation(fields: [department], references: [code])
+
+  @@map("researches")
+}

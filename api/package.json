@@ -4,13 +4,25 @@
   "type": "module",
   "scripts": {
     "dev": "node --watch server.js",
-    "start": "node server.js"
+    "start": "node server.js",
+    "db:seed": "node prisma/seed.js",
+    "db:migrate": "npx prisma migrate dev",
+    "db:reset": "npx prisma migrate reset --force && npm run db:seed",
+    "db:studio": "npx prisma studio"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
   },
   "dependencies": {
+    "@prisma/adapter-pg": "^7.0.1",
+    "@prisma/client": "^7.0.1",
     "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
     "express": "^4.21.0",
-    "papaparse": "^5.4.1"
+    "papaparse": "^5.4.1",
+    "pg": "^8.16.3",
+    "prisma": "^7.0.1"
+  },
+  "devDependencies": {
+    "dotenv": "^17.2.3"
   }
 }
-
