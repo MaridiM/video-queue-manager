@@ -4,6 +4,53 @@
 
 ---
 
+## [1.4.0] - 2025-11-28
+
+### Added - RESEARCHES Scripts Documentation
+
+Создана полная документация всех скриптов из папки `ENTITIES/TASK_MANAGERS/RESEARCHES/`.
+
+#### 📄 Новый файл: `apps/RESEARCHES.md`
+
+Документирует все скрипты для обработки видео и управления исследованиями:
+
+### 00_SEARCH_QUEUE Scripts
+| Скрипт | Назначение |
+|--------|------------|
+| `assign_search.py` | Создание нового задания на поиск видео |
+| `complete_search.py` | Завершение поискового задания с записью результатов |
+
+### 01_VIDEO_QUEUE Scripts
+| Скрипт | Назначение |
+|--------|------------|
+| `add_video_to_queue.py` | Добавление видео в очередь (pandas версия) |
+| `add_video_to_queue_simple.py` | Добавление видео (без pandas) |
+| `calculate_priority.py` | Расчёт приоритетного рейтинга 0-100 |
+| `update_queue_status.py` | Обновление статуса видео в очереди |
+| `export_queue.py` | Экспорт очереди в CSV/JSON/Markdown |
+| `video_queue_manager.py` | Полноценный менеджер очереди с CLI |
+
+### Main Scripts (RESEARCHES/scripts/)
+| Скрипт | Назначение | Экономия времени |
+|--------|------------|------------------|
+| `process_video.py` | Master orchestrator (Фазы 5-7) | 1.5-2ч → 5-10мин |
+| `video_id_scanner.py` | Поиск следующих ID в LIBRARIES | 15-30 мин |
+| `video_gap_analyzer.py` | Gap-анализ транскрипций | 30-45 мин |
+| `video_json_updater.py` | Обновление JSON файлов | 45-60 мин |
+| `video_integration_reporter.py` | Генерация отчётов интеграции | 20-30 мин |
+| `update_video_progress.py` | Отслеживание прогресса | - |
+| `analyze_video_phases.py` | Анализ статуса фаз | - |
+| `generate_progress_report.py` | Генерация отчётов прогресса | - |
+| `check_prompts_compliance.py` | Проверка промптов | - |
+| `verify_manual_integration.py` | Проверка интеграции в LIBRARIES | - |
+
+### Utility Files
+- `config.py` - конфигурация путей и констант
+- `utils.py` - общие утилиты (load_json, save_json, backup_file)
+- `markdown_parser.py` - парсинг Markdown транскрипций
+
+---
+
 ## [1.3.1] - 2025-11-28
 
 ### Verified - Video Queue Table Spec Compliance
@@ -276,5 +323,5 @@ npm run dev
 
 ---
 
-**Last Updated:** 2025-11-28 12:45 UTC
+**Last Updated:** 2025-11-28 14:30 UTC
 
