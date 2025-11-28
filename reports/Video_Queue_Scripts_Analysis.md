@@ -1,307 +1,258 @@
 # 📊 Анализ функционала: Video Queue Scripts vs Web App
 
-**Дата анализа:** 2025-11-28
+**Дата анализа:** 2025-11-28  
+**Последнее обновление:** 2025-11-28  
 **Источник:** `ENTITIES/TASK_MANAGERS/RESEARCHES/01_VIDEO_QUEUE/scripts/`
 
 ---
 
-## Сравнительная таблица
+## ✅ Сравнительная таблица (ОБНОВЛЕНО)
 
 | Функция | Python Scripts | Web App | Статус |
 |---------|---------------|---------|--------|
-| **Добавление видео** | ✅ Полный | ⚠️ Базовый | Частично |
-| **Обновление статуса** | ✅ Полный | ⚠️ Базовый | Частично |
-| **Расчёт приоритета** | ✅ Алгоритм | ❌ Нет | **Отсутствует** |
-| **Экспорт CSV** | ✅ + фильтр статуса | ✅ Базовый | Частично |
-| **Экспорт JSON** | ✅ + фильтр статуса | ✅ Базовый | Частично |
-| **Экспорт Markdown** | ✅ Полный | ❌ Нет | **Отсутствует** |
-| **Дублирование видео** | ✅ Проверка | ❌ Нет | **Отсутствует** |
-| **Массовое обновление** | ✅ Batch update | ❌ Нет | **Отсутствует** |
-| **Статистика очереди** | ✅ Summary | ⚠️ Минимальная | Частично |
-| **Sync from CSV** | — | ✅ Да | ✅ Реализовано |
+| **Добавление видео** | ✅ Полный | ✅ Полный | ✅ **100%** |
+| **Обновление статуса** | ✅ Полный | ✅ Полный + auto-dates | ✅ **100%** |
+| **Расчёт приоритета** | ✅ Алгоритм | ✅ Идентичный | ✅ **100%** |
+| **Экспорт CSV** | ✅ + фильтр статуса | ✅ + фильтр статуса | ✅ **100%** |
+| **Экспорт JSON** | ✅ + фильтр статуса | ✅ + фильтр статуса | ✅ **100%** |
+| **Экспорт Markdown** | ✅ Полный | ✅ Полный | ✅ **100%** |
+| **Дублирование видео** | ✅ Проверка | ✅ Проверка + error | ✅ **100%** |
+| **Массовое обновление** | ✅ Batch update | ✅ Batch update | ✅ **100%** |
+| **Статистика очереди** | ✅ Summary | ✅ Полная статистика | ✅ **100%** |
+| **Sync from CSV** | — | ✅ Да | ✅ **Бонус** |
 
 ---
 
-## 🔴 НЕ РЕАЛИЗОВАНО в Web App
+## ✅ ВСЁ РЕАЛИЗОВАНО
 
-### 1. Priority Score Calculation (`calculate_priority.py`)
+### 1. ✅ Priority Score Calculation
 
-**Алгоритм расчёта 0-100:**
+**Статус:** ✅ РЕАЛИЗОВАНО (server.js, lines 35-59)
 
-| Компонент | Вес | Максимум | Формула |
-|-----------|-----|----------|---------|
-| Views | 30% | 30 points | `min(30, (views / 1_000_000) * 30)` |
-| Likes | 20% | 20 points | `min(20, (likes / 50_000) * 20)` |
-| Recency | 30% | 30 points | `max(0, 30 - (days_since_publish / 365) * 30)` |
-| Engagement | 20% | 20 points | `min(20, (likes/views) * 2000)` |
-
-**Код из скрипта:**
-```python
-def calculate_priority_score(video_metadata):
-    views = int(video_metadata.get('views', 0))
-    likes = int(video_metadata.get('likes', 0))
-    publish_date = video_metadata.get('publish_date', datetime.now())
-    
-    # Views score (30% weight) - 1M views = max 30 points
-    views_score = min(30, (views / 1000000) * 30)
-    
-    # Likes score (20% weight) - 50K likes = max 20 points
-    likes_score = min(20, (likes / 50000) * 20)
-    
-    # Recency score (30% weight) - 30 points for brand new
-    days_since_publish = (datetime.now() - publish_date).days
-    recency_score = max(0, 30 - (days_since_publish / 365) * 30)
-    
-    # Engagement score (20% weight) - 1% engagement = 20 points
-    if views > 0:
-        engagement_rate = likes / views
-        engagement_score = min(20, engagement_rate * 2000)
-    else:
-        engagement_score = 0
-    
-    return round(views_score + likes_score + recency_score + engagement_score, 2)
+```javascript
+function calculatePriorityScore(views = 0, likes = 0, publishDate = null) {
+  const viewsScore = Math.min(30, (views / 1000000) * 30);
+  const likesScore = Math.min(20, (likes / 50000) * 20);
+  // ... recency + engagement
+  return Math.round(totalScore * 100) / 100;
+}
 ```
 
-**В приложении:** Priority Score не рассчитывается автоматически
+- ✅ Views (30% weight)
+- ✅ Likes (20% weight)
+- ✅ Recency (30% weight)
+- ✅ Engagement (20% weight)
+- ✅ Auto-calculate при создании видео
+- ✅ Auto-priority level (high/medium/low) из score
 
 ---
 
-### 2. Duplicate Detection
+### 2. ✅ Duplicate Detection
 
-**Код из скрипта:**
-```python
-# Проверка существующего видео по Video_ID
-if not queue_df.empty and video_id in queue_df['Video_ID'].values:
-    existing_queue_id = queue_df[queue_df['Video_ID'] == video_id]['Queue_ID'].values[0]
-    print(f"⚠️ Video already in queue: {existing_queue_id}")
-    return existing_queue_id
+**Статус:** ✅ РЕАЛИЗОВАНО (server.js, line 445)
+
+```javascript
+// ========== DUPLICATE DETECTION ==========
+if (videoId) {
+  const existingVideo = await prisma.videoQueue.findFirst({
+    where: { videoId: videoId }
+  });
+  
+  if (existingVideo) {
+    return res.status(409).json({
+      success: false,
+      error: 'Video already exists in queue',
+      duplicate: true,
+      existing: { queue_id, video_title, status }
+    });
+  }
+}
 ```
 
-**В приложении:** Можно добавить одно и то же видео несколько раз без предупреждения
+- ✅ Проверка по Video_ID
+- ✅ HTTP 409 Conflict при дубликате
+- ✅ Информация о существующем видео
+- ✅ Отображение ошибки в UI
 
 ---
 
-### 3. Export to Markdown (`export_queue.py`)
+### 3. ✅ Export to Markdown
 
-Генерирует красивый Markdown отчёт с:
-- Сводкой по статусам
-- Топ темами
-- Таблицей видео
-- Детальным листингом каждого видео
+**Статус:** ✅ РЕАЛИЗОВАНО (server.js, lines 791-900)
 
-**Структура экспорта:**
-```markdown
-# Video Queue Export
-
-**Export Date**: 2025-11-28 15:30:00
-**Total Videos**: 45
-**Status Filter**: All
-
----
-
-## Summary
-
-### By Status
-- **Pending**: 20
-- **Selected**: 8
-- **Parsing**: 5
-- **Parsed**: 10
-- **Rejected**: 2
-
-### Top Topics
-- **AI Automation**: 15
-- **Video Editing**: 12
-
----
-
-## Videos
-
-| Queue ID | Title | Channel | Topic | Status | Priority | Added By | Added Date |
-|----------|-------|---------|-------|--------|----------|----------|------------|
-| VQ-001 | Claude Desktop... | AI Explained | AI Dev | Selected | 85.5/100 | maria@ | 2025-11-28 |
-
----
-
-## Detailed Listing
-
-### VQ-001: Claude Desktop MCP Setup Tutorial
-
-- **Channel**: AI Explained
-- **Video URL**: https://youtube.com/watch?v=...
-- **Views**: 1,500,000
-- **Likes**: 45,000
-...
+```
+GET /api/video-queue/export?format=markdown
+GET /api/video-queue/export?format=md&status=pending
 ```
 
-**В приложении:** Только CSV и JSON экспорт
+Генерирует полный Markdown отчёт:
+- ✅ Summary статистика
+- ✅ By Status breakdown
+- ✅ Top Topics
+- ✅ Research Sources
+- ✅ By Department
+- ✅ Videos Table
+- ✅ Detailed Listing
 
 ---
 
-### 4. Status Filter for Export
+### 4. ✅ Status Filter for Export
 
-**Использование в скриптах:**
-```bash
-python export_queue.py csv Pending    # Только Pending
-python export_queue.py json Selected  # Только Selected
-python export_queue.py all            # Все форматы
+**Статус:** ✅ РЕАЛИЗОВАНО
+
+```
+GET /api/video-queue/export?format=csv&status=pending
+GET /api/video-queue/export?format=json&status=selected
+GET /api/video-queue/export?format=md&status=complete
 ```
 
-**В приложении:** Экспорт всех записей без возможности фильтрации
+- ✅ Фильтр по статусу для всех форматов
+- ✅ CSV, JSON, Markdown
 
 ---
 
-### 5. Batch Status Update (`update_queue_status.py`)
+### 5. ✅ Batch Status Update
 
-**Код из скрипта:**
-```python
-def update_multiple_status(queue_ids, new_status, selected_by=None):
-    """
-    Update the status of multiple videos at once.
-    """
-    results = {
-        'successful': [],
-        'failed': []
-    }
+**Статус:** ✅ РЕАЛИЗОВАНО (server.js, lines 1004-1058)
 
-    for queue_id in queue_ids:
-        success = update_status(queue_id, new_status, selected_by)
-        if success:
-            results['successful'].append(queue_id)
-        else:
-            results['failed'].append(queue_id)
-
-    return results
+```
+POST /api/video-queue/batch-update
+{
+  "queue_ids": ["VQ-001", "VQ-002", "VQ-003"],
+  "status": "selected",
+  "selected_by": "john@example.com"
+}
 ```
 
-**В приложении:** Только обновление по одному видео
+- ✅ Массовое обновление статуса
+- ✅ Auto-dates при смене статуса
+- ✅ Результат: successful/failed counts
 
 ---
 
-### 6. Auto-date Updates for Status Changes
+### 6. ✅ Auto-date Updates for Status Changes
 
-**Код из скрипта:**
-```python
-def update_status(queue_id, new_status, selected_by=None):
-    today = datetime.now().strftime('%Y-%m-%d')
+**Статус:** ✅ РЕАЛИЗОВАНО (server.js, PUT /api/video-queue/:id)
 
-    if new_status == 'Selected':
-        if selected_by:
-            queue_df.at[idx, 'Selected_By'] = selected_by
-        queue_df.at[idx, 'Selected_Date'] = today
+```javascript
+if (req.body.status === 'selected') {
+  updateData.selectedDate = new Date();
+  if (req.body.selected_by) {
+    updateData.selectedBy = req.body.selected_by;
+  }
+}
 
-    elif new_status == 'Parsed':
-        queue_df.at[idx, 'Parsed_Date'] = today
+if (req.body.status === 'transcribed' || req.body.status === 'complete') {
+  updateData.parsedDate = new Date();
+}
 ```
 
-**В приложении:** Даты `Selected_Date` и `Parsed_Date` не обновляются автоматически при смене статуса
+- ✅ `selected` → auto-set `selected_date`, `selected_by`
+- ✅ `transcribed/complete` → auto-set `parsed_date`
 
 ---
 
-### 7. Queue Summary Dashboard
+### 7. ✅ Queue Summary Dashboard
 
-**Вывод из скрипта:**
+**Статус:** ✅ РЕАЛИЗОВАНО (server.js, lines 1131-1223)
+
 ```
-VIDEO QUEUE SUMMARY
-============================================================
-Total videos in queue: 45
-
-Status Breakdown:
-  Pending     : 20 (44.4%)
-  Selected    :  8 (17.8%)
-  Parsing     :  5 (11.1%)
-  Parsed      : 10 (22.2%)
-  Rejected    :  2 ( 4.4%)
-
-Top Topics:
-  AI Automation         : 15
-  Video Editing         : 12
-  Design Research       :  8
-
-Research Sources:
-  Perplexity  : 25
-  YouTube     : 15
-  Gemini      :  5
-============================================================
+GET /api/video-queue/summary
 ```
 
-**В приложении:** Минимальная статистика - только общий счётчик видео
+Response:
+```json
+{
+  "total": 25,
+  "total_views": 15000000,
+  "total_likes": 450000,
+  "average_priority_score": "52.30",
+  "by_status": [...],
+  "top_topics": [...],
+  "by_source": [...],
+  "by_department": [...]
+}
+```
+
+- ✅ Total count
+- ✅ Status breakdown с процентами
+- ✅ Top 5 topics
+- ✅ Research sources
+- ✅ Department distribution
+- ✅ Total views/likes
+- ✅ Average priority score
 
 ---
 
-### 8. Недостающие поля в форме добавления видео
+### 8. ✅ Все поля в форме добавления видео
 
-| Поле | В скриптах | В Web App |
-|------|-----------|-----------|
-| `video_url` | ✅ | ✅ |
-| `video_title` | ✅ | ✅ |
-| `channel_name` | ✅ | ✅ |
-| `topic_category` | ✅ | ❌ |
-| `research_source` | ✅ | ❌ |
-| `views` | ✅ | ❌ |
-| `likes` | ✅ | ❌ |
-| `comments` | ✅ | ❌ |
-| `publish_date` | ✅ | ❌ |
-| `duration` | ✅ | ⚠️ (duration_minutes) |
-| `priority` | ✅ | ✅ |
-| `department` | ✅ | ✅ |
-| `notes` | ✅ | ✅ |
+**Статус:** ✅ РЕАЛИЗОВАНО (VideoForm.tsx)
 
----
-
-## ✅ Рекомендации по реализации
-
-### Приоритет 1 (Высокий)
-
-| # | Функция | Описание | Сложность |
-|---|---------|----------|-----------|
-| 1 | 🔢 Priority Score Calculation | Автоматический расчёт приоритета при добавлении/редактировании | Средняя |
-| 2 | ⚠️ Duplicate Detection | Проверка дубликатов по Video_ID при добавлении | Низкая |
-| 3 | 📅 Auto-date Updates | Автоматические даты при смене статуса на Selected/Parsed | Низкая |
-
-### Приоритет 2 (Средний)
-
-| # | Функция | Описание | Сложность |
-|---|---------|----------|-----------|
-| 4 | 📊 Queue Summary Dashboard | Статистика по статусам, темам, источникам | Средняя |
-| 5 | 📝 Export to Markdown | Красивый MD отчёт с таблицами | Средняя |
-| 6 | 🔍 Export with Status Filter | Выбор статуса при экспорте | Низкая |
-
-### Приоритет 3 (Низкий)
-
-| # | Функция | Описание | Сложность |
-|---|---------|----------|-----------|
-| 7 | ✅ Batch Status Update | Массовое обновление с чекбоксами | Высокая |
-| 8 | 📝 Extended Add Form | Все поля метаданных (views, likes, topic_category...) | Средняя |
+| Поле | В скриптах | В Web App | Статус |
+|------|-----------|-----------|--------|
+| `video_url` | ✅ | ✅ | ✅ |
+| `video_title` | ✅ | ✅ | ✅ |
+| `channel_name` | ✅ | ✅ | ✅ |
+| `topic_category` | ✅ | ✅ | ✅ |
+| `research_source` | ✅ | ✅ | ✅ |
+| `views` | ✅ | ✅ | ✅ |
+| `likes` | ✅ | ✅ | ✅ |
+| `comments` | ✅ | ✅ | ✅ |
+| `publish_date` | ✅ | ✅ | ✅ |
+| `duration` | ✅ | ✅ (duration_minutes) | ✅ |
+| `priority` | ✅ | ✅ (auto-calc) | ✅ |
+| `department` | ✅ | ✅ | ✅ |
+| `notes` | ✅ | ✅ | ✅ |
+| `added_by` | ✅ | ✅ | ✅ |
 
 ---
 
-## Файлы скриптов
+## 📊 API Endpoints Summary
 
-| Файл | Размер | Строк | Основная функция |
-|------|--------|-------|------------------|
-| `add_video_to_queue.py` | 7.6KB | 236 | Добавление видео с pandas |
-| `add_video_to_queue_simple.py` | 8.6KB | 268 | Добавление видео без pandas |
-| `update_queue_status.py` | 7.1KB | 245 | Обновление статуса + summary |
-| `calculate_priority.py` | 6.7KB | 190 | Расчёт приоритета 0-100 |
-| `export_queue.py` | 8.7KB | 275 | Экспорт CSV/JSON/Markdown |
-
----
-
-## Заключение
-
-**Покрытие функционала:** ~60%
-
-Основные пробелы:
-1. Нет автоматического расчёта приоритета
-2. Нет проверки дубликатов
-3. Нет экспорта в Markdown
-4. Ограниченная статистика
-5. Нет массового обновления
-
-**Рекомендация:** Начать с реализации Priority Score Calculation и Duplicate Detection как наиболее важных для качества данных.
+| Endpoint | Method | Описание | Python аналог |
+|----------|--------|----------|---------------|
+| `/api/video-queue` | GET | Список всех видео | `load_queue()` |
+| `/api/video-queue` | POST | Добавить видео | `add_video()` |
+| `/api/video-queue/:id` | PUT | Обновить видео | `update_status()` |
+| `/api/video-queue/:id` | DELETE | Удалить видео | — |
+| `/api/video-queue/sync-csv` | POST | Sync из CSV | — |
+| `/api/video-queue/batch-update` | POST | Массовое обновление | `update_multiple_status()` |
+| `/api/video-queue/export` | GET | Экспорт CSV/JSON/MD | `export_to_*()` |
+| `/api/video-queue/summary` | GET | Статистика очереди | `show_queue_summary()` |
 
 ---
 
-**Создано:** 2025-11-28
-**Автор:** AI Analysis
+## 🎯 Итоговый статус
 
+| Метрика | Значение |
+|---------|----------|
+| **Покрытие функционала** | **100%** |
+| **Пробелы** | **0** |
+| **Дополнительные функции** | Sync from CSV, UI notifications |
+
+### ✅ Все Python скрипты полностью реализованы:
+
+- ✅ `add_video_to_queue.py` → POST /api/video-queue
+- ✅ `calculate_priority.py` → calculatePriorityScore()
+- ✅ `update_queue_status.py` → PUT + batch-update + summary
+- ✅ `export_queue.py` → GET /api/video-queue/export
+
+---
+
+## Файлы с реализацией
+
+| Функционал | Backend | Frontend |
+|------------|---------|----------|
+| Priority Score | `server.js:35-59` | Auto в форме |
+| Duplicate Detection | `server.js:445-463` | Error в модале |
+| Export (CSV/JSON/MD) | `server.js:731-937` | Кнопка Export |
+| Batch Update | `server.js:1004-1058` | `api.ts:batchUpdate()` |
+| Queue Summary | `server.js:1131-1223` | `api.ts:getSummary()` |
+| Auto-dates | `server.js:968-983` | — |
+| Form Fields | `server.js:493-516` | `VideoForm.tsx` |
+
+---
+
+**Создано:** 2025-11-28  
+**Обновлено:** 2025-11-28  
+**Статус:** ✅ ВСЁ РЕАЛИЗОВАНО

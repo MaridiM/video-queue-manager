@@ -203,6 +203,35 @@ export const videoQueueAPI = {
     if (status) url += `&status=${status}`;
     return url;
   },
+
+  // Batch update multiple videos at once
+  // Matches Python script: update_queue_status.py -> update_multiple_status()
+  batchUpdate: (data: {
+    queue_ids: string[];
+    status: string;
+    selected_by?: string;
+  }) => fetchAPI<{
+    updated: number;
+    failed: number;
+    successful: string[];
+    errors?: { queueId: string; error: string }[];
+  }>('/api/video-queue/batch-update', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
+
+  // Get queue summary statistics
+  // Matches Python script: update_queue_status.py -> show_queue_summary()
+  getSummary: () => fetchAPI<{
+    total: number;
+    total_views: number;
+    total_likes: number;
+    average_priority_score: string;
+    by_status: { status: string; count: number; percentage: string }[];
+    top_topics: { topic: string; count: number }[];
+    by_source: { source: string; count: number }[];
+    by_department: { department: string; count: number }[];
+  }>('/api/video-queue/summary'),
 };
 
 // =====================================================

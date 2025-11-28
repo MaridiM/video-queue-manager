@@ -938,6 +938,7 @@ app.get('/api/video-queue/export', async (req, res) => {
 });
 
 // PUT /api/video-queue/:id - Update video queue entry
+// Auto-sets dates based on status change (like Python script update_queue_status.py)
 app.put('/api/video-queue/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -948,11 +949,31 @@ app.put('/api/video-queue/:id', async (req, res) => {
     if (req.body.channel_name !== undefined) updateData.channelName = req.body.channel_name;
     if (req.body.duration_minutes !== undefined) updateData.durationMinutes = req.body.duration_minutes;
     if (req.body.priority) updateData.priority = req.body.priority;
-    if (req.body.status) updateData.status = req.body.status;
     if (req.body.department) updateData.department = req.body.department;
     if (req.body.notes !== undefined) updateData.notes = req.body.notes;
     if (req.body.assigned_to !== undefined) updateData.assignedTo = req.body.assigned_to;
-    if (req.body.selected_by) {
+    
+    // ========== AUTO-DATE SETTING BASED ON STATUS ==========
+    // Matches Python script: update_queue_status.py
+    if (req.body.status) {
+      updateData.status = req.body.status;
+      
+      // When status changes to 'selected' - set selected_date and selected_by
+      if (req.body.status === 'selected') {
+        updateData.selectedDate = new Date();
+        if (req.body.selected_by) {
+          updateData.selectedBy = req.body.selected_by;
+        }
+      }
+      
+      // When status changes to 'transcribed' or 'complete' - set parsed_date
+      if (req.body.status === 'transcribed' || req.body.status === 'complete') {
+        updateData.parsedDate = new Date();
+      }
+    }
+    
+    // Manual selected_by update
+    if (req.body.selected_by && !updateData.selectedBy) {
       updateData.selectedBy = req.body.selected_by;
       updateData.selectedDate = new Date();
     }
@@ -971,9 +992,78 @@ app.put('/api/video-queue/:id', async (req, res) => {
       });
     }
     
+    console.log(`📝 Updated ${id}: status=${req.body.status || 'unchanged'}`);
+    
     res.json({ success: true, data: updated });
   } catch (error) {
     console.error('Error updating video queue entry:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST /api/video-queue/batch-update - Batch update multiple videos
+// Matches Python script: update_queue_status.py -> update_multiple_status()
+app.post('/api/video-queue/batch-update', async (req, res) => {
+  try {
+    const { queue_ids, status, selected_by } = req.body;
+    
+    if (!queue_ids || !Array.isArray(queue_ids) || queue_ids.length === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'queue_ids array is required' 
+      });
+    }
+    
+    if (!status) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'status is required' 
+      });
+    }
+    
+    const results = {
+      successful: [],
+      failed: []
+    };
+    
+    // Build update data based on status
+    const updateData = { status };
+    
+    if (status === 'selected') {
+      updateData.selectedDate = new Date();
+      if (selected_by) updateData.selectedBy = selected_by;
+    }
+    
+    if (status === 'transcribed' || status === 'complete') {
+      updateData.parsedDate = new Date();
+    }
+    
+    // Update each video
+    for (const queueId of queue_ids) {
+      try {
+        await prisma.videoQueue.update({
+          where: { queueId },
+          data: updateData,
+        });
+        results.successful.push(queueId);
+      } catch (error) {
+        results.failed.push({ queueId, error: error.message });
+      }
+    }
+    
+    console.log(`📝 Batch update: ${results.successful.length} successful, ${results.failed.length} failed`);
+    
+    res.json({ 
+      success: true, 
+      data: {
+        updated: results.successful.length,
+        failed: results.failed.length,
+        successful: results.successful,
+        errors: results.failed.length > 0 ? results.failed : undefined
+      }
+    });
+  } catch (error) {
+    console.error('Error in batch update:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -1037,6 +1127,101 @@ app.get('/api/researches', async (req, res) => {
 // =====================================================
 // OVERVIEW / STATISTICS API
 // =====================================================
+
+// GET /api/video-queue/summary - Get detailed queue summary
+// Matches Python script: update_queue_status.py -> show_queue_summary()
+app.get('/api/video-queue/summary', async (req, res) => {
+  try {
+    const data = await prisma.videoQueue.findMany();
+    
+    if (data.length === 0) {
+      return res.json({ 
+        success: true, 
+        data: { 
+          total: 0, 
+          message: 'Queue is empty',
+          by_status: {},
+          by_topic: {},
+          by_source: {},
+          by_department: {}
+        } 
+      });
+    }
+    
+    // Status breakdown
+    const statusCounts = {};
+    const topicCounts = {};
+    const sourceCounts = {};
+    const deptCounts = {};
+    let totalViews = 0;
+    let totalLikes = 0;
+    
+    data.forEach(item => {
+      // Status
+      statusCounts[item.status] = (statusCounts[item.status] || 0) + 1;
+      
+      // Topic
+      if (item.topicCategory) {
+        topicCounts[item.topicCategory] = (topicCounts[item.topicCategory] || 0) + 1;
+      }
+      
+      // Research Source
+      if (item.researchSource) {
+        sourceCounts[item.researchSource] = (sourceCounts[item.researchSource] || 0) + 1;
+      }
+      
+      // Department
+      if (item.department) {
+        deptCounts[item.department] = (deptCounts[item.department] || 0) + 1;
+      }
+      
+      // Totals
+      totalViews += item.views || 0;
+      totalLikes += item.likes || 0;
+    });
+    
+    // Calculate percentages
+    const total = data.length;
+    const statusBreakdown = Object.entries(statusCounts).map(([status, count]) => ({
+      status,
+      count,
+      percentage: ((count / total) * 100).toFixed(1)
+    })).sort((a, b) => b.count - a.count);
+    
+    const topTopics = Object.entries(topicCounts)
+      .map(([topic, count]) => ({ topic, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+    
+    const sourceBreakdown = Object.entries(sourceCounts)
+      .map(([source, count]) => ({ source, count }))
+      .sort((a, b) => b.count - a.count);
+    
+    const deptBreakdown = Object.entries(deptCounts)
+      .map(([department, count]) => ({ department, count }))
+      .sort((a, b) => b.count - a.count);
+    
+    // Average priority score
+    const avgPriority = data.reduce((sum, item) => sum + (item.priorityScore || 0), 0) / total;
+    
+    res.json({ 
+      success: true, 
+      data: {
+        total,
+        total_views: totalViews,
+        total_likes: totalLikes,
+        average_priority_score: avgPriority.toFixed(2),
+        by_status: statusBreakdown,
+        top_topics: topTopics,
+        by_source: sourceBreakdown,
+        by_department: deptBreakdown
+      }
+    });
+  } catch (error) {
+    console.error('Error getting queue summary:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 // GET /api/overview - Get dashboard statistics
 app.get('/api/overview', async (req, res) => {
@@ -1132,7 +1317,9 @@ app.listen(PORT, () => {
   console.log(`   GET  /api/video-queue`);
   console.log(`   POST /api/video-queue`);
   console.log(`   POST /api/video-queue/sync-csv`);
+  console.log(`   POST /api/video-queue/batch-update`);
   console.log(`   GET  /api/video-queue/export`);
+  console.log(`   GET  /api/video-queue/summary`);
   console.log(`   PUT  /api/video-queue/:id`);
   console.log(`   DELETE /api/video-queue/:id`);
   console.log(`   GET  /api/departments`);
