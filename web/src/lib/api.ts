@@ -55,6 +55,15 @@ export interface SearchQueueAPI {
   updated_at: string;
 }
 
+export interface SyncCSVResult {
+  imported: number;
+  updated: number;
+  skipped: number;
+  total: number;
+  errors?: { searchId: string; error: string }[];
+  csvPath: string;
+}
+
 export const searchQueueAPI = {
   // Get all search queue entries
   getAll: () => fetchAPI<SearchQueueAPI[]>('/api/search-queue'),
@@ -90,6 +99,11 @@ export const searchQueueAPI = {
   // Delete search queue entry
   delete: (id: string) => fetchAPI<SearchQueueAPI>(`/api/search-queue/${id}`, {
     method: 'DELETE',
+  }),
+
+  // Sync from CSV file in Dropbox
+  syncFromCSV: () => fetchAPI<SyncCSVResult>('/api/search-queue/sync-csv', {
+    method: 'POST',
   }),
 };
 
@@ -172,6 +186,15 @@ export const videoQueueAPI = {
   delete: (id: string) => fetchAPI<VideoQueueAPI>(`/api/video-queue/${id}`, {
     method: 'DELETE',
   }),
+
+  // Sync from CSV file in Dropbox
+  syncFromCSV: () => fetchAPI<SyncCSVResult>('/api/video-queue/sync-csv', {
+    method: 'POST',
+  }),
+
+  // Export to file (returns URL to download)
+  getExportUrl: (format: 'csv' | 'json') => 
+    `${API_BASE_URL}/api/video-queue/export?format=${format}`,
 };
 
 // =====================================================

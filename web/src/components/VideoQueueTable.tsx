@@ -10,10 +10,20 @@ import {
   Filter as FilterIcon,
   Loader2,
   AlertCircle,
-  RefreshCw
+  RefreshCw,
+  CloudDownload,
+  Download,
+  FileSpreadsheet,
+  FileJson,
+  CheckCircle,
+  Database,
+  ArrowRight,
+  Sparkles,
+  FolderSync,
+  ChevronDown
 } from 'lucide-react';
 import type { VideoQueueItem, VideoFormData, Status, Priority, Department } from '../lib/types';
-import { videoQueueAPI, type VideoQueueAPI } from '../lib/api';
+import { videoQueueAPI, type VideoQueueAPI, type SyncCSVResult } from '../lib/api';
 import { StatusBadge, PriorityBadge } from './StatusBadge';
 import { Button } from './ui/Button';
 import { Modal } from './ui/Modal';
@@ -57,6 +67,12 @@ export function VideoQueueTable() {
   const [editingVideo, setEditingVideo] = useState<VideoQueueItem | null>(null);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [videoToDelete, setVideoToDelete] = useState<string | null>(null);
+  
+  // Sync and Export state
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<SyncCSVResult | null>(null);
+  const [showSyncResult, setShowSyncResult] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
 
   // Fetch data from API
   const fetchData = async () => {
@@ -167,6 +183,32 @@ export function VideoQueueTable() {
     setIsDeleteOpen(true);
   };
 
+  // Sync from CSV (Dropbox)
+  const handleSyncFromCSV = async () => {
+    setIsSyncing(true);
+    setSyncResult(null);
+    setError(null);
+    
+    const result = await videoQueueAPI.syncFromCSV();
+    
+    if (result.success && result.data) {
+      setSyncResult(result.data);
+      setShowSyncResult(true);
+      await fetchData();
+    } else {
+      setError(result.error || 'Failed to sync from CSV');
+    }
+    
+    setIsSyncing(false);
+  };
+
+  // Export handler
+  const handleExport = (format: 'csv' | 'json') => {
+    const url = videoQueueAPI.getExportUrl(format);
+    window.open(url, '_blank');
+    setShowExportMenu(false);
+  };
+
   // Loading state
   if (isLoading) {
     return (
@@ -236,10 +278,70 @@ export function VideoQueueTable() {
             />
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
+            {/* Refresh */}
             <Button variant="outline" onClick={fetchData} disabled={isLoading}>
               <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
             </Button>
+            
+            {/* Export Dropdown */}
+            <div className="relative">
+              <Button 
+                variant="outline" 
+                onClick={() => setShowExportMenu(!showExportMenu)}
+                className="gap-1"
+              >
+                <Download size={16} />
+                Export
+                <ChevronDown size={14} />
+              </Button>
+              {showExportMenu && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-10" 
+                    onClick={() => setShowExportMenu(false)} 
+                  />
+                  <div className="absolute right-0 mt-1 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                    <button
+                      onClick={() => handleExport('csv')}
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                    >
+                      <FileSpreadsheet size={16} className="text-emerald-600" />
+                      Export as CSV
+                    </button>
+                    <button
+                      onClick={() => handleExport('json')}
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                    >
+                      <FileJson size={16} className="text-blue-600" />
+                      Export as JSON
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+            
+            {/* Sync from Dropbox */}
+            <Button 
+              variant="outline" 
+              onClick={handleSyncFromCSV} 
+              disabled={isSyncing}
+              title="Import from Video_Queue_Master.csv in Dropbox"
+            >
+              {isSyncing ? (
+                <>
+                  <Loader2 size={16} className="mr-1 animate-spin" />
+                  Syncing...
+                </>
+              ) : (
+                <>
+                  <CloudDownload size={16} className="mr-1" />
+                  Sync from Dropbox
+                </>
+              )}
+            </Button>
+            
+            {/* Add Video */}
             <Button onClick={() => { setEditingVideo(null); setIsFormOpen(true); }}>
               <Plus size={18} className="mr-2" />
               Add Video
@@ -383,6 +485,121 @@ export function VideoQueueTable() {
               ) : (
                 'Delete Video'
               )}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Sync Result Dialog */}
+      <Modal
+        isOpen={showSyncResult}
+        onClose={() => setShowSyncResult(false)}
+        title=""
+      >
+        <div className="space-y-5">
+          {syncResult && (
+            <>
+              {/* Header with animation */}
+              <div className="text-center pb-2">
+                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-rose-400 to-red-500 shadow-lg shadow-rose-200 mb-3">
+                  <Youtube size={32} className="text-white" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-800">Video Sync Complete!</h3>
+                <p className="text-sm text-gray-500 mt-1">Videos successfully synchronized from Dropbox</p>
+              </div>
+
+              {/* Visual Flow: CSV → Database */}
+              <div className="bg-gradient-to-r from-rose-50 via-pink-50 to-purple-50 rounded-xl p-4 border border-rose-100">
+                <div className="flex items-center justify-center gap-3">
+                  {/* Source */}
+                  <div className="flex flex-col items-center">
+                    <div className="w-14 h-14 rounded-xl bg-white shadow-md flex items-center justify-center border-2 border-rose-200">
+                      <FileSpreadsheet size={28} className="text-rose-500" />
+                    </div>
+                    <span className="text-[10px] text-gray-500 mt-1.5 font-medium">CSV File</span>
+                  </div>
+                  
+                  {/* Arrow Road */}
+                  <div className="flex-1 flex items-center justify-center px-2">
+                    <div className="relative w-full">
+                      <div className="h-1.5 bg-gradient-to-r from-rose-300 via-pink-400 to-purple-400 rounded-full" />
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="flex gap-1">
+                          <ArrowRight size={16} className="text-rose-500 animate-pulse" />
+                          <ArrowRight size={16} className="text-pink-400 animate-pulse" style={{ animationDelay: '0.1s' }} />
+                          <ArrowRight size={16} className="text-purple-500 animate-pulse" style={{ animationDelay: '0.2s' }} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Destination */}
+                  <div className="flex flex-col items-center">
+                    <div className="w-14 h-14 rounded-xl bg-white shadow-md flex items-center justify-center border-2 border-purple-200">
+                      <Database size={28} className="text-purple-500" />
+                    </div>
+                    <span className="text-[10px] text-gray-500 mt-1.5 font-medium">Database</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Stats Cards */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 p-4 text-white shadow-lg">
+                  <div className="absolute top-0 right-0 w-16 h-16 bg-white/10 rounded-full -mr-8 -mt-8" />
+                  <div className="text-3xl font-bold">{syncResult.imported}</div>
+                  <div className="text-xs text-emerald-100 font-medium">New Videos</div>
+                  <Plus size={14} className="absolute bottom-2 right-2 text-emerald-200" />
+                </div>
+                
+                <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 p-4 text-white shadow-lg">
+                  <div className="absolute top-0 right-0 w-16 h-16 bg-white/10 rounded-full -mr-8 -mt-8" />
+                  <div className="text-3xl font-bold">{syncResult.updated}</div>
+                  <div className="text-xs text-blue-100 font-medium">Updated</div>
+                  <RefreshCw size={14} className="absolute bottom-2 right-2 text-blue-200" />
+                </div>
+                
+                <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-gray-400 to-gray-500 p-4 text-white shadow-lg">
+                  <div className="absolute top-0 right-0 w-16 h-16 bg-white/10 rounded-full -mr-8 -mt-8" />
+                  <div className="text-3xl font-bold">{syncResult.skipped}</div>
+                  <div className="text-xs text-gray-200 font-medium">Skipped</div>
+                </div>
+              </div>
+              
+              {/* Source Path */}
+              <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                <div className="flex items-start gap-2">
+                  <FolderSync size={16} className="text-gray-400 mt-0.5 shrink-0" />
+                  <div className="min-w-0">
+                    <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-0.5">Source File</div>
+                    <div className="text-xs text-gray-600 font-mono truncate" title={syncResult.csvPath}>
+                      {syncResult.csvPath.split('\\').slice(-3).join(' / ')}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Errors if any */}
+              {syncResult.errors && syncResult.errors.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                  <div className="flex items-center gap-2 text-amber-700 font-semibold text-sm mb-2">
+                    <AlertCircle size={16} />
+                    Some records had errors
+                  </div>
+                  <ul className="text-xs text-amber-600 space-y-1 ml-6">
+                    {syncResult.errors.map((err, i) => (
+                      <li key={i} className="list-disc">{err.queueId}: {err.error}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
+          )}
+          
+          <div className="flex justify-center pt-1">
+            <Button onClick={() => setShowSyncResult(false)} className="px-8">
+              <CheckCircle size={16} className="mr-2" />
+              Done
             </Button>
           </div>
         </div>
