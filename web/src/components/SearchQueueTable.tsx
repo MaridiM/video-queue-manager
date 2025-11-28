@@ -55,16 +55,24 @@ function SearchForm({
   onCancel: () => void;
 }) {
   const [formData, setFormData] = useState<SearchFormData>({
-    search_query: initialData?.search_query || '',
+    employee: initialData?.assigned_to || '',
     department: initialData?.department || 'DEV',
-    assigned_to: initialData?.assigned_to || '',
+    topic: (initialData as any)?.topic || '',
+    search_query: initialData?.search_query || '',
+    notes: (initialData as any)?.notes || '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const validate = () => {
     const newErrors: Record<string, string> = {};
-    if (!formData.search_query || formData.search_query.length < 5) {
-      newErrors.search_query = 'Search query must be at least 5 characters';
+    if (!formData.employee || formData.employee.trim().length < 2) {
+      newErrors.employee = 'Employee name is required';
+    }
+    if (!formData.topic || formData.topic.trim().length < 3) {
+      newErrors.topic = 'Topic is required (min 3 characters)';
+    }
+    if (!formData.search_query || formData.search_query.trim().length < 5) {
+      newErrors.search_query = 'Search query is required (min 5 characters)';
     }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -81,19 +89,26 @@ function SearchForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Employee - Required */}
       <div>
-        <label className="text-sm font-medium mb-2 block text-gray-700">Search Query *</label>
-        <textarea
-          className={`${inputClass} min-h-[100px] ${errors.search_query ? 'border-red-500' : ''}`}
-          placeholder="e.g., Claude Desktop MCP setup tutorial 2024"
-          value={formData.search_query}
-          onChange={(e) => setFormData({ ...formData, search_query: e.target.value })}
+        <label className="text-sm font-medium mb-2 block text-gray-700">
+          Employee <span className="text-red-500">*</span>
+        </label>
+        <input
+          type="text"
+          className={`${inputClass} ${errors.employee ? 'border-red-500' : ''}`}
+          placeholder="e.g., John Doe or john@remotehelpers.com"
+          value={formData.employee}
+          onChange={(e) => setFormData({ ...formData, employee: e.target.value })}
         />
-        {errors.search_query && <p className="text-red-500 text-xs mt-1">{errors.search_query}</p>}
+        {errors.employee && <p className="text-red-500 text-xs mt-1">{errors.employee}</p>}
       </div>
 
+      {/* Department - Required */}
       <div>
-        <label className="text-sm font-medium mb-2 block text-gray-700">Department</label>
+        <label className="text-sm font-medium mb-2 block text-gray-700">
+          Department <span className="text-red-500">*</span>
+        </label>
         <select
           className={inputClass}
           value={formData.department}
@@ -105,14 +120,44 @@ function SearchForm({
         </select>
       </div>
 
+      {/* Topic - Required */}
       <div>
-        <label className="text-sm font-medium mb-2 block text-gray-700">Assigned To</label>
+        <label className="text-sm font-medium mb-2 block text-gray-700">
+          Topic <span className="text-red-500">*</span>
+        </label>
         <input
-          type="email"
-          className={inputClass}
-          placeholder="email@remotehelpers.com"
-          value={formData.assigned_to || ''}
-          onChange={(e) => setFormData({ ...formData, assigned_to: e.target.value })}
+          type="text"
+          className={`${inputClass} ${errors.topic ? 'border-red-500' : ''}`}
+          placeholder="e.g., AI Automation, Video Editing, Social Media"
+          value={formData.topic}
+          onChange={(e) => setFormData({ ...formData, topic: e.target.value })}
+        />
+        {errors.topic && <p className="text-red-500 text-xs mt-1">{errors.topic}</p>}
+      </div>
+
+      {/* Search Query - Required */}
+      <div>
+        <label className="text-sm font-medium mb-2 block text-gray-700">
+          Search Query <span className="text-red-500">*</span>
+        </label>
+        <textarea
+          className={`${inputClass} min-h-[80px] ${errors.search_query ? 'border-red-500' : ''}`}
+          placeholder="e.g., Claude Desktop MCP setup tutorial 2024"
+          value={formData.search_query}
+          onChange={(e) => setFormData({ ...formData, search_query: e.target.value })}
+        />
+        {errors.search_query && <p className="text-red-500 text-xs mt-1">{errors.search_query}</p>}
+        <p className="text-gray-400 text-xs mt-1">Specific search terms for Perplexity AI</p>
+      </div>
+
+      {/* Notes - Optional */}
+      <div>
+        <label className="text-sm font-medium mb-2 block text-gray-700">Notes</label>
+        <textarea
+          className={`${inputClass} min-h-[60px]`}
+          placeholder="e.g., Focus on recent videos, Avoid tutorials older than 2023"
+          value={formData.notes}
+          onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
         />
       </div>
 
@@ -154,19 +199,28 @@ export function SearchQueueTable() {
   }), [data]);
 
   const handleAdd = (formData: SearchFormData) => {
-    const newSearch: SearchQuery = {
-      id: Math.random().toString(36).substr(2, 9),
-      created_at: new Date().toISOString(),
-      search_query: formData.search_query,
+    // Generate SEARCH-XXX ID like Python script
+    const maxId = data.reduce((max, item) => {
+      const match = item.id.match(/SEARCH-(\d+)/);
+      return match ? Math.max(max, parseInt(match[1])) : max;
+    }, 0);
+    const newId = `SEARCH-${String(maxId + 1).padStart(3, '0')}`;
+
+    const newSearch: SearchQuery & { topic?: string; notes?: string } = {
+      id: newId,
+      created_at: new Date().toISOString().split('T')[0], // YYYY-MM-DD format
+      search_query: formData.search_query || '',
       department: formData.department,
       status: 'pending',
       perplexity_settings: { creativity: 0.5, structure_mode: true },
       results_count: 0,
       videos_added: 0,
-      assigned_to: formData.assigned_to || null,
+      assigned_to: formData.employee,
       completed_at: null,
+      topic: formData.topic,
+      notes: formData.notes || '',
     };
-    setData([newSearch, ...data]);
+    setData([newSearch as SearchQuery, ...data]);
     setIsFormOpen(false);
   };
 
@@ -174,7 +228,14 @@ export function SearchQueueTable() {
     if (!editingSearch) return;
     setData(data.map(item => 
       item.id === editingSearch.id 
-        ? { ...item, ...formData } 
+        ? { 
+            ...item, 
+            search_query: formData.search_query || '',
+            department: formData.department,
+            assigned_to: formData.employee,
+            ...(formData.topic && { topic: formData.topic }),
+            ...(formData.notes !== undefined && { notes: formData.notes }),
+          } 
         : item
     ));
     setEditingSearch(null);
@@ -278,12 +339,12 @@ export function SearchQueueTable() {
         <table className="w-full text-sm text-left table-fixed">
           <thead className="text-xs text-gray-500 uppercase bg-gray-50/50 border-b border-gray-200">
             <tr>
-              <th className="px-4 py-3 font-medium w-[40%]">Search Query</th>
+              <th className="px-4 py-3 font-medium w-[32%]">Topic / Query</th>
               <th className="px-4 py-3 font-medium w-[8%] hidden sm:table-cell">Dept</th>
-              <th className="px-4 py-3 font-medium w-[14%]">Status</th>
-              <th className="px-4 py-3 font-medium w-[8%] text-center hidden md:table-cell">Results</th>
+              <th className="px-4 py-3 font-medium w-[12%]">Status</th>
+              <th className="px-4 py-3 font-medium w-[10%] hidden md:table-cell">Employee</th>
               <th className="px-4 py-3 font-medium w-[8%] text-center hidden lg:table-cell">Videos</th>
-              <th className="px-4 py-3 font-medium w-[10%] hidden lg:table-cell">Assigned</th>
+              <th className="px-4 py-3 font-medium w-[10%] hidden lg:table-cell">Notes</th>
               <th className="px-4 py-3 font-medium w-[10%] hidden md:table-cell">Created</th>
               <th className="px-4 py-3 font-medium w-[10%] text-right">Actions</th>
             </tr>
@@ -294,9 +355,16 @@ export function SearchQueueTable() {
                 <tr key={search.id} className="hover:bg-gray-50/50 transition-colors group">
                   <td className="px-4 py-3">
                     <div className="min-w-0">
-                      <div className="font-medium text-gray-900 truncate text-sm" title={search.search_query}>
-                        {search.search_query}
+                      {/* Topic as main title */}
+                      <div className="font-medium text-gray-900 truncate text-sm" title={(search as any).topic || 'No topic'}>
+                        {(search as any).topic || <span className="text-gray-400 italic">No topic</span>}
                       </div>
+                      {/* Search query as subtitle */}
+                      {search.search_query && (
+                        <div className="text-xs text-gray-500 mt-0.5 truncate" title={search.search_query}>
+                          {search.search_query}
+                        </div>
+                      )}
                       {search.error_message && (
                         <div className="text-xs text-red-500 mt-0.5 flex items-center gap-1 truncate">
                           <AlertCircle size={10} className="shrink-0" />
@@ -306,7 +374,7 @@ export function SearchQueueTable() {
                       {/* Mobile-only info */}
                       <div className="flex items-center gap-2 mt-1 sm:hidden">
                         <Badge variant="outline" className="text-[10px] px-1.5 py-0">{search.department}</Badge>
-                        <span className="text-xs text-gray-400">{search.results_count} results</span>
+                        <span className="text-xs text-gray-400">{search.videos_added} videos</span>
                       </div>
                     </div>
                   </td>
@@ -316,8 +384,14 @@ export function SearchQueueTable() {
                   <td className="px-4 py-3">
                     {getStatusBadge(search.status)}
                   </td>
-                  <td className="px-4 py-3 text-center hidden md:table-cell">
-                    <span className="font-medium text-gray-900">{search.results_count}</span>
+                  <td className="px-4 py-3 text-gray-600 hidden md:table-cell">
+                    {search.assigned_to ? (
+                      <span className="text-xs truncate block" title={search.assigned_to}>
+                        {search.assigned_to.includes('@') ? search.assigned_to.split('@')[0] : search.assigned_to}
+                      </span>
+                    ) : (
+                      <span className="text-gray-400">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-center hidden lg:table-cell">
                     <span className="flex items-center justify-center gap-1 text-gray-700">
@@ -326,8 +400,8 @@ export function SearchQueueTable() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-gray-500 hidden lg:table-cell">
-                    {search.assigned_to ? (
-                      <span className="text-xs truncate block">{search.assigned_to.split('@')[0]}</span>
+                    {(search as any).notes ? (
+                      <span className="text-xs truncate block" title={(search as any).notes}>{(search as any).notes}</span>
                     ) : (
                       <span className="text-gray-400">—</span>
                     )}

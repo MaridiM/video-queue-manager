@@ -4,6 +4,84 @@
 
 ---
 
+## [1.4.3] - 2025-11-28
+
+### Updated - Search Queue Form (Python Script Compatibility)
+
+Обновлена форма "Add New Search Query" для соответствия полям Python скрипта `assign_search.py`.
+
+#### Новые поля формы:
+| Поле | Обязательное | Описание |
+|------|--------------|----------|
+| **Employee** | ✅ Yes | Имя или email сотрудника |
+| **Department** | ✅ Yes | Код департамента |
+| **Topic** | ✅ Yes | Тема поиска |
+| **Search Query** | ❌ No | Конкретный поисковый запрос |
+| **Notes** | ❌ No | Дополнительные заметки |
+
+#### Изменения в файлах:
+- `SearchQueueTable.tsx` - обновлена форма и таблица
+- `types.ts` - обновлен интерфейс `SearchFormData`
+- `constants.ts` - обновлены MOCK данные с полями `topic`, `notes` и ID формата `SEARCH-XXX`
+
+#### Обновлена таблица:
+- Колонка "Topic / Query" вместо "Search Query"
+- Добавлена колонка "Employee"
+- Добавлена колонка "Notes"
+- ID теперь в формате `SEARCH-001`, `SEARCH-002`...
+
+---
+
+## [1.4.2] - 2025-11-28
+
+### Added - Search Queue Analysis Report
+
+Создан детальный отчёт анализа Search Queue: `apps/reports/SEARCH_QUEUE_ANALYSIS_2025-11-28.md`
+
+**Содержимое отчёта:**
+- Сравнение CSV структуры vs Frontend типов
+- Выявленные несоответствия (13 пунктов)
+- Различия в форматах ID, статусов, дат
+- Рекомендации по исправлению
+- Оценка трудозатрат (4-6 часов)
+- Чек-лист исполнения
+
+---
+
+## [1.4.1] - 2025-11-28
+
+### Fixed - CSV File Paths in Backend
+
+Исправлены пути к CSV файлам в `server.js` для соответствия реальной структуре Dropbox.
+
+**Проблема:** Пути в коде не соответствовали структуре `ENTITIES/TASK_MANAGERS/RESEARCHES/`.
+
+**Было (неправильно):**
+```javascript
+readCSV('RESEARCHES/RESEARCHES_Master_List.csv')
+readCSV('RESEARCHES/00_SEARCH_QUEUE/Search_Queue_Master.csv')
+readCSV('RESEARCHES/01_VIDEO_QUEUE/Video_Queue_Master.csv')
+```
+
+**Стало (правильно):**
+```javascript
+readCSV('ENTITIES/TASK_MANAGERS/RESEARCHES/RESEARCHES_Master_List.csv')
+readCSV('ENTITIES/TASK_MANAGERS/RESEARCHES/00_SEARCH_QUEUE/Search_Queue_Master.csv')
+readCSV('ENTITIES/TASK_MANAGERS/RESEARCHES/01_VIDEO_QUEUE/Video_Queue_Master.csv')
+```
+
+### Added - Search Queue Documentation
+
+Создан файл `apps/SEARCH_QUEUE.md` с анализом:
+- Текущее состояние backend/frontend
+- Структура CSV файла
+- Несоответствие полей Python ↔ Frontend
+- Цикл создания новой задачи
+- План реализации CRUD операций
+- Связь с Video Queue
+
+---
+
 ## [1.4.0] - 2025-11-28
 
 ### Added - RESEARCHES Scripts Documentation
@@ -323,5 +401,5 @@ npm run dev
 
 ---
 
-**Last Updated:** 2025-11-28 14:30 UTC
+**Last Updated:** 2025-11-28 15:30 UTC
 

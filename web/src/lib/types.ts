@@ -70,9 +70,11 @@ export interface SearchQuery {
 }
 
 export interface SearchFormData {
-  search_query: string;
-  department: Department;
-  assigned_to?: string;
+  employee: string;           // Required - Employee name or email
+  department: Department;     // Required - Department code
+  topic: string;              // Required - Search topic
+  search_query: string;       // Required - Specific search query
+  notes?: string;             // Optional - Additional notes
 }
 
 export type EntityType = 'TOOL' | 'WORKFLOW' | 'ACTION' | 'OBJECT';

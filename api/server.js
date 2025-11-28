@@ -43,7 +43,7 @@ function checkFileExists(filePath) {
 // API: Get Master Research List
 app.get('/api/researches', async (req, res) => {
   try {
-    const result = await readCSV('RESEARCHES/RESEARCHES_Master_List.csv');
+    const result = await readCSV('ENTITIES/TASK_MANAGERS/RESEARCHES/RESEARCHES_Master_List.csv');
     
     // Add file existence check for each research
     const dataWithFileCheck = result.data.map(item => ({
@@ -57,10 +57,13 @@ app.get('/api/researches', async (req, res) => {
   }
 });
 
+// Search Queue CSV Path
+const SEARCH_QUEUE_CSV = 'ENTITIES/TASK_MANAGERS/RESEARCHES/00_SEARCH_QUEUE/Search_Queue_Master.csv';
+
 // API: Get Search Queue
 app.get('/api/search-queue', async (req, res) => {
   try {
-    const result = await readCSV('RESEARCHES/00_SEARCH_QUEUE/Search_Queue_Master.csv');
+    const result = await readCSV(SEARCH_QUEUE_CSV);
     res.json({ success: true, data: result.data });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -68,7 +71,7 @@ app.get('/api/search-queue', async (req, res) => {
 });
 
 // Video Queue CSV Path
-const VIDEO_QUEUE_CSV = 'RESEARCHES/01_VIDEO_QUEUE/Video_Queue_Master.csv';
+const VIDEO_QUEUE_CSV = 'ENTITIES/TASK_MANAGERS/RESEARCHES/01_VIDEO_QUEUE/Video_Queue_Master.csv';
 
 // Helper: Write CSV file
 function writeCSV(filePath, data) {
@@ -190,8 +193,8 @@ app.delete('/api/video-queue/:id', async (req, res) => {
 app.get('/api/overview', async (req, res) => {
   try {
     const [researches, searchQueue, videoQueue] = await Promise.all([
-      readCSV('RESEARCHES/RESEARCHES_Master_List.csv'),
-      readCSV('RESEARCHES/00_SEARCH_QUEUE/Search_Queue_Master.csv'),
+      readCSV('ENTITIES/TASK_MANAGERS/RESEARCHES/RESEARCHES_Master_List.csv'),
+      readCSV(SEARCH_QUEUE_CSV),
       readCSV(VIDEO_QUEUE_CSV),
     ]);
 

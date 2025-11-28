@@ -132,34 +132,41 @@ export const MOCK_VIDEOS: VideoQueueItem[] = [
   }
 ];
 
-export const MOCK_SEARCHES: SearchQuery[] = [
+// Extended type with topic and notes for display
+type SearchQueryExtended = SearchQuery & { topic?: string; notes?: string };
+
+export const MOCK_SEARCHES: SearchQueryExtended[] = [
   {
-    id: '1',
-    created_at: '2025-11-28T10:00:00Z',
+    id: 'SEARCH-001',
+    created_at: '2025-11-28',
     search_query: 'Claude Desktop MCP setup tutorial 2024',
     department: 'DEV',
     status: 'completed',
     perplexity_settings: { creativity: 0.5, structure_mode: true },
     results_count: 12,
     videos_added: 3,
-    assigned_to: 'alex@remotehelpers.com',
-    completed_at: '2025-11-28T10:15:00Z'
+    assigned_to: 'Alex Johnson',
+    completed_at: '2025-11-28',
+    topic: 'AI Development Tools',
+    notes: 'Focus on MCP integration'
   },
   {
-    id: '2',
-    created_at: '2025-11-28T11:30:00Z',
+    id: 'SEARCH-002',
+    created_at: '2025-11-28',
     search_query: 'n8n workflow automation examples for developers',
     department: 'DEV',
     status: 'searching',
     perplexity_settings: { creativity: 0.5, structure_mode: true },
     results_count: 0,
     videos_added: 0,
-    assigned_to: 'maria@remotehelpers.com',
-    completed_at: null
+    assigned_to: 'Maria Garcia',
+    completed_at: null,
+    topic: 'Workflow Automation',
+    notes: ''
   },
   {
-    id: '3',
-    created_at: '2025-11-28T09:00:00Z',
+    id: 'SEARCH-003',
+    created_at: '2025-11-28',
     search_query: 'Social media caption AI tools comparison',
     department: 'SMM',
     status: 'pending',
@@ -167,68 +174,80 @@ export const MOCK_SEARCHES: SearchQuery[] = [
     results_count: 0,
     videos_added: 0,
     assigned_to: null,
-    completed_at: null
+    completed_at: null,
+    topic: 'Social Media Tools',
+    notes: 'Compare top 5 tools'
   },
   {
-    id: '4',
-    created_at: '2025-11-27T14:00:00Z',
+    id: 'SEARCH-004',
+    created_at: '2025-11-27',
     search_query: 'Video editing AI tools 2024 premiere davinci',
     department: 'VID',
     status: 'completed',
     perplexity_settings: { creativity: 0.5, structure_mode: true },
     results_count: 18,
     videos_added: 5,
-    assigned_to: 'jordan@remotehelpers.com',
-    completed_at: '2025-11-27T14:30:00Z'
+    assigned_to: 'Jordan Smith',
+    completed_at: '2025-11-27',
+    topic: 'Video Editing AI',
+    notes: 'Premiere and DaVinci plugins'
   },
   {
-    id: '5',
-    created_at: '2025-11-27T16:00:00Z',
+    id: 'SEARCH-005',
+    created_at: '2025-11-27',
     search_query: 'AI automation tools for marketing teams',
     department: 'MKT',
     status: 'failed',
     perplexity_settings: { creativity: 0.5, structure_mode: true },
     results_count: 0,
     videos_added: 0,
-    assigned_to: 'sam@remotehelpers.com',
+    assigned_to: 'Sam Wilson',
     completed_at: null,
-    error_message: 'API rate limit exceeded'
+    error_message: 'API rate limit exceeded',
+    topic: 'Marketing Automation',
+    notes: 'Retry tomorrow'
   },
   {
-    id: '6',
-    created_at: '2025-11-27T12:00:00Z',
+    id: 'SEARCH-006',
+    created_at: '2025-11-27',
     search_query: 'Midjourney prompt engineering techniques advanced',
     department: 'DGN',
     status: 'completed',
     perplexity_settings: { creativity: 0.7, structure_mode: false },
     results_count: 24,
     videos_added: 8,
-    assigned_to: 'chris@remotehelpers.com',
-    completed_at: '2025-11-27T12:45:00Z'
+    assigned_to: 'Chris Taylor',
+    completed_at: '2025-11-27',
+    topic: 'AI Image Generation',
+    notes: 'Advanced techniques only'
   },
   {
-    id: '7',
-    created_at: '2025-11-28T08:00:00Z',
+    id: 'SEARCH-007',
+    created_at: '2025-11-28',
     search_query: 'ChatGPT API integration best practices 2024',
     department: 'AID',
     status: 'searching',
     perplexity_settings: { creativity: 0.5, structure_mode: true },
     results_count: 0,
     videos_added: 0,
-    assigned_to: 'alex@remotehelpers.com',
-    completed_at: null
+    assigned_to: 'Alex Johnson',
+    completed_at: null,
+    topic: 'ChatGPT Integration',
+    notes: ''
   },
   {
-    id: '8',
-    created_at: '2025-11-26T15:00:00Z',
+    id: 'SEARCH-008',
+    created_at: '2025-11-26',
     search_query: 'TikTok content strategy for B2B companies',
     department: 'SMM',
     status: 'completed',
     perplexity_settings: { creativity: 0.6, structure_mode: true },
     results_count: 15,
     videos_added: 4,
-    assigned_to: 'maria@remotehelpers.com',
-    completed_at: '2025-11-26T15:30:00Z'
+    assigned_to: 'Maria Garcia',
+    completed_at: '2025-11-26',
+    topic: 'TikTok Strategy',
+    notes: 'B2B focus'
   }
 ];
 
