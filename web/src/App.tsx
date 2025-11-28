@@ -6,6 +6,7 @@ import { CostTrackerWidget } from './components/CostTrackerWidget';
 import { KnowledgeMapViewer } from './components/KnowledgeMapViewer';
 import { EntityExtractionViewer } from './components/EntityExtractionViewer';
 import { BulkVideoImport } from './components/BulkVideoImport';
+import { SearchQueueTable } from './components/SearchQueueTable';
 import { LayoutDashboard, ListVideo, Search, Settings, Bell, User, Upload, Network, Brain, FileInput } from 'lucide-react';
 
 type View = 'dashboard' | 'queue' | 'search' | 'upload' | 'extraction' | 'knowledge' | 'settings' | 'import';
@@ -52,7 +53,7 @@ export default function App() {
             className={`w-full flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${currentView === 'search' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
           >
             <Search size={20} />
-            Search Catalog
+            Search Queue
           </button>
            <button 
             onClick={() => setCurrentView('upload')}
@@ -106,7 +107,7 @@ export default function App() {
               {currentView === 'dashboard' && 'Dashboard Overview'}
               {currentView === 'queue' && 'Video Queue'}
               {currentView === 'import' && 'Bulk Video Import'}
-              {currentView === 'search' && 'Search Catalog'}
+              {currentView === 'search' && 'Search Queue'}
               {currentView === 'upload' && 'Upload Transcription'}
               {currentView === 'extraction' && 'Entity Extraction'}
               {currentView === 'knowledge' && 'Knowledge Map'}
@@ -148,13 +149,7 @@ export default function App() {
             {currentView === 'upload' && <UploadTranscriptionScreen />}
             {currentView === 'extraction' && <EntityExtractionViewer />}
             {currentView === 'knowledge' && <KnowledgeMapViewer />}
-            {currentView === 'search' && (
-              <div className="flex flex-col items-center justify-center h-[50vh] text-slate-500">
-                <Search size={48} className="mb-4 text-slate-300" />
-                <p className="text-lg font-medium">Search Catalog Module</p>
-                <p className="text-sm">Coming soon in Phase 0.5</p>
-              </div>
-            )}
+            {currentView === 'search' && <SearchQueueTable />}
             {currentView === 'settings' && (
                <div className="flex flex-col items-center justify-center h-[50vh] text-slate-500">
                  <Settings size={48} className="mb-4 text-slate-300" />

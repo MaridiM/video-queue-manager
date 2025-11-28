@@ -1,4 +1,4 @@
-import type { VideoQueueItem, ExtractedEntity, VideoImportRow } from './types';
+import type { VideoQueueItem, ExtractedEntity, VideoImportRow, SearchQuery } from './types';
 
 export const DEPARTMENTS = ['DEV', 'SMM', 'VID', 'AID', 'DGN', 'MKT'] as const;
 
@@ -131,6 +131,113 @@ export const MOCK_VIDEOS: VideoQueueItem[] = [
     perplexity_search_id: 'search_128'
   }
 ];
+
+export const MOCK_SEARCHES: SearchQuery[] = [
+  {
+    id: '1',
+    created_at: '2025-11-28T10:00:00Z',
+    search_query: 'Claude Desktop MCP setup tutorial 2024',
+    department: 'DEV',
+    status: 'completed',
+    perplexity_settings: { creativity: 0.5, structure_mode: true },
+    results_count: 12,
+    videos_added: 3,
+    assigned_to: 'alex@remotehelpers.com',
+    completed_at: '2025-11-28T10:15:00Z'
+  },
+  {
+    id: '2',
+    created_at: '2025-11-28T11:30:00Z',
+    search_query: 'n8n workflow automation examples for developers',
+    department: 'DEV',
+    status: 'searching',
+    perplexity_settings: { creativity: 0.5, structure_mode: true },
+    results_count: 0,
+    videos_added: 0,
+    assigned_to: 'maria@remotehelpers.com',
+    completed_at: null
+  },
+  {
+    id: '3',
+    created_at: '2025-11-28T09:00:00Z',
+    search_query: 'Social media caption AI tools comparison',
+    department: 'SMM',
+    status: 'pending',
+    perplexity_settings: { creativity: 0.5, structure_mode: true },
+    results_count: 0,
+    videos_added: 0,
+    assigned_to: null,
+    completed_at: null
+  },
+  {
+    id: '4',
+    created_at: '2025-11-27T14:00:00Z',
+    search_query: 'Video editing AI tools 2024 premiere davinci',
+    department: 'VID',
+    status: 'completed',
+    perplexity_settings: { creativity: 0.5, structure_mode: true },
+    results_count: 18,
+    videos_added: 5,
+    assigned_to: 'jordan@remotehelpers.com',
+    completed_at: '2025-11-27T14:30:00Z'
+  },
+  {
+    id: '5',
+    created_at: '2025-11-27T16:00:00Z',
+    search_query: 'AI automation tools for marketing teams',
+    department: 'MKT',
+    status: 'failed',
+    perplexity_settings: { creativity: 0.5, structure_mode: true },
+    results_count: 0,
+    videos_added: 0,
+    assigned_to: 'sam@remotehelpers.com',
+    completed_at: null,
+    error_message: 'API rate limit exceeded'
+  },
+  {
+    id: '6',
+    created_at: '2025-11-27T12:00:00Z',
+    search_query: 'Midjourney prompt engineering techniques advanced',
+    department: 'DGN',
+    status: 'completed',
+    perplexity_settings: { creativity: 0.7, structure_mode: false },
+    results_count: 24,
+    videos_added: 8,
+    assigned_to: 'chris@remotehelpers.com',
+    completed_at: '2025-11-27T12:45:00Z'
+  },
+  {
+    id: '7',
+    created_at: '2025-11-28T08:00:00Z',
+    search_query: 'ChatGPT API integration best practices 2024',
+    department: 'AID',
+    status: 'searching',
+    perplexity_settings: { creativity: 0.5, structure_mode: true },
+    results_count: 0,
+    videos_added: 0,
+    assigned_to: 'alex@remotehelpers.com',
+    completed_at: null
+  },
+  {
+    id: '8',
+    created_at: '2025-11-26T15:00:00Z',
+    search_query: 'TikTok content strategy for B2B companies',
+    department: 'SMM',
+    status: 'completed',
+    perplexity_settings: { creativity: 0.6, structure_mode: true },
+    results_count: 15,
+    videos_added: 4,
+    assigned_to: 'maria@remotehelpers.com',
+    completed_at: '2025-11-26T15:30:00Z'
+  }
+];
+
+export const SEARCH_STATUS_OPTIONS = [
+  { value: 'pending', label: 'Pending' },
+  { value: 'searching', label: 'Searching' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'failed', label: 'Failed' }
+] as const;
 
 export const MOCK_STATS = {
   totalVideos: 156,

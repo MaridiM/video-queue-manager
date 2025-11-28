@@ -50,6 +50,31 @@ export interface VideoImportRow {
   status?: string;
 }
 
+export type SearchStatus = 'pending' | 'searching' | 'completed' | 'failed';
+
+export interface SearchQuery {
+  id: string;
+  created_at: string;
+  search_query: string;
+  department: Department;
+  status: SearchStatus;
+  perplexity_settings?: {
+    creativity: number;
+    structure_mode: boolean;
+  };
+  results_count: number;
+  videos_added: number;
+  assigned_to: string | null;
+  completed_at: string | null;
+  error_message?: string | null;
+}
+
+export interface SearchFormData {
+  search_query: string;
+  department: Department;
+  assigned_to?: string;
+}
+
 export type EntityType = 'TOOL' | 'WORKFLOW' | 'ACTION' | 'OBJECT';
 export type EntityClassification = 'NEW' | 'EXISTING' | 'UPDATE';
 
