@@ -172,12 +172,13 @@ app.post('/api/search-queue/sync-csv', async (req, res) => {
   try {
     // Try multiple possible paths to find the CSV file
     const possiblePaths = [
+      path.join(__dirname, '..', '..', 'ENTITIES', 'TASK_MANAGERS', 'RESEARCHES', '00_SEARCH_QUEUE', 'Search_Queue_Master.csv'),
       // From apps/api/ directory
-      path.resolve(process.cwd(), '../../ENTITIES/TASK_MANAGERS/RESEARCHES/00_SEARCH_QUEUE/Search_Queue_Master.csv'),
-      // From workspace root
-      path.resolve(process.cwd(), 'ENTITIES/TASK_MANAGERS/RESEARCHES/00_SEARCH_QUEUE/Search_Queue_Master.csv'),
-      // From apps/ directory
-      path.resolve(process.cwd(), '../ENTITIES/TASK_MANAGERS/RESEARCHES/00_SEARCH_QUEUE/Search_Queue_Master.csv'),
+      // path.resolve(process.cwd(), '../../ENTITIES/TASK_MANAGERS/RESEARCHES/00_SEARCH_QUEUE/Search_Queue_Master.csv'),
+      // // From workspace root
+      // path.resolve(process.cwd(), 'ENTITIES/TASK_MANAGERS/RESEARCHES/00_SEARCH_QUEUE/Search_Queue_Master.csv'),
+      // // From apps/ directory
+      // path.resolve(process.cwd(), '../ENTITIES/TASK_MANAGERS/RESEARCHES/00_SEARCH_QUEUE/Search_Queue_Master.csv'),
     ];
 
     
@@ -547,9 +548,10 @@ app.post('/api/video-queue/sync-csv', async (req, res) => {
   try {
     // Try multiple possible paths to find the CSV file
     const possiblePaths = [
-      path.resolve(process.cwd(), '../../ENTITIES/TASK_MANAGERS/RESEARCHES/01_VIDEO_QUEUE/Video_Queue_Master.csv'),
-      path.resolve(process.cwd(), 'ENTITIES/TASK_MANAGERS/RESEARCHES/01_VIDEO_QUEUE/Video_Queue_Master.csv'),
-      path.resolve(process.cwd(), '../ENTITIES/TASK_MANAGERS/RESEARCHES/01_VIDEO_QUEUE/Video_Queue_Master.csv'),
+      path.join(__dirname, '..', '..', 'ENTITIES', 'TASK_MANAGERS', 'RESEARCHES', '01_VIDEO_QUEUE', 'Video_Queue_Master.csv')
+      // path.resolve(process.cwd(), '../../ENTITIES/TASK_MANAGERS/RESEARCHES/01_VIDEO_QUEUE/Video_Queue_Master.csv'),
+      // path.resolve(process.cwd(), 'ENTITIES/TASK_MANAGERS/RESEARCHES/01_VIDEO_QUEUE/Video_Queue_Master.csv'),
+      // path.resolve(process.cwd(), '../ENTITIES/TASK_MANAGERS/RESEARCHES/01_VIDEO_QUEUE/Video_Queue_Master.csv'),
     ];
     
     let csvPath = null;
