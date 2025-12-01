@@ -1861,12 +1861,20 @@ app.post('/api/transcription/process', async (req, res) => {
     }
     
     const { segments, languageName } = transcriptResult;
+    
+    // Create transcript WITH timestamps for AI processing
+    const transcriptWithTimestamps = segments.map(s => {
+      const timestamp = formatTimestamp(s.startMs);
+      return `[${timestamp}] ${s.text}`;
+    }).join('\n');
+    
+    // Also keep raw text for reference
     const rawText = segments.map(s => s.text).join(' ');
     const step1Time = Date.now() - startStep1;
     
     console.log(`   ✅ Got ${segments.length} segments (${step1Time}ms)`);
     console.log(`   Language: ${languageName}`);
-    console.log(`   Raw text length: ${rawText.length} characters`);
+    console.log(`   Transcript with timestamps: ${transcriptWithTimestamps.length} characters`);
     
     // ========================================
     // STEP 2: Load PMT-004 Prompt Template
@@ -1900,15 +1908,18 @@ Output ONLY the structured markdown document as specified. Do not include any pr
 - Video Title: ${videoTitle || 'Unknown'}
 - Video URL: https://www.youtube.com/watch?v=${videoId}
 - Language: ${languageName}
+- Total Segments: ${segments.length}
 
-## Raw Transcript
-${rawText}
+## Transcript with Timestamps
+${transcriptWithTimestamps}
 
 ## Instructions Template
 ${promptTemplate}
 
 ---
-Now process the raw transcript above following the instructions template. Output the complete structured markdown document.`;
+Now process the transcript above following the instructions template. 
+IMPORTANT: Preserve the timestamps [MM:SS] in the Word-for-Word Transcription section.
+Output the complete structured markdown document.`;
 
     let aiResponse;
     let modelUsed;
@@ -2029,7 +2040,8 @@ ${aiResponse}`;
         videoTitle: videoTitle || 'Unknown',
         videoUrl: `https://www.youtube.com/watch?v=${videoId}`,
         language: languageName,
-        rawTranscriptLength: rawText.length,
+        totalSegments: segments.length,
+        rawTranscriptLength: transcriptWithTimestamps.length,
         processedLength: aiResponse.length,
         savedFilePath: savedFilePath?.replace(/\\/g, '/'),
         aiProvider: actualProvider,
