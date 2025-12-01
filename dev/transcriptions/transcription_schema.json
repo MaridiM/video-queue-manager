@@ -1,0 +1,454 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://rems.io/schemas/transcription/v1.0",
+  "title": "Video Transcription Schema",
+  "description": "Универсальная JSON-схема для хранения видео транскрипций с таксономическим анализом",
+  "version": "1.0.0",
+  "type": "object",
+  "required": ["video_id", "video_title", "metadata", "transcription"],
+  "properties": {
+    "video_id": {
+      "type": "string",
+      "description": "Уникальный идентификатор видео (Video_XXX)",
+      "pattern": "^Video_[0-9]{3}$",
+      "examples": ["Video_001", "Video_026"]
+    },
+    "video_title": {
+      "type": "string",
+      "description": "Название видео",
+      "minLength": 1
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Метаданные видео",
+      "required": ["duration"],
+      "properties": {
+        "channel": {
+          "type": "string",
+          "description": "Название канала/создателя"
+        },
+        "creator": {
+          "type": "string",
+          "description": "Имя автора видео"
+        },
+        "channel_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL канала"
+        },
+        "video_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL видео"
+        },
+        "duration": {
+          "type": "string",
+          "description": "Продолжительность видео (MM:SS или HH:MM:SS)",
+          "pattern": "^([0-9]{1,2}:)?[0-9]{2}:[0-9]{2}$"
+        },
+        "publication_date": {
+          "type": "string",
+          "format": "date",
+          "description": "Дата публикации видео"
+        },
+        "language": {
+          "type": "string",
+          "description": "Язык видео",
+          "default": "en"
+        },
+        "topics": {
+          "type": "array",
+          "description": "Список ключевых тем видео",
+          "items": { "type": "string" }
+        },
+        "tools_referenced": {
+          "type": "array",
+          "description": "Инструменты, упомянутые в видео",
+          "items": { "type": "string" }
+        },
+        "links_referenced": {
+          "type": "array",
+          "description": "Ссылки, упомянутые в видео",
+          "items": {
+            "type": "object",
+            "properties": {
+              "url": { "type": "string", "format": "uri" },
+              "description": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "description": {
+      "type": "string",
+      "description": "Подробное описание содержания видео"
+    },
+    "tags": {
+      "type": "array",
+      "description": "Теги для поиска и категоризации",
+      "items": { "type": "string" }
+    },
+    "transcription": {
+      "type": "array",
+      "description": "Полная транскрипция видео с таймкодами",
+      "items": {
+        "type": "object",
+        "required": ["start", "text"],
+        "properties": {
+          "start": {
+            "type": "string",
+            "description": "Время начала сегмента (MM:SS или HH:MM:SS)",
+            "pattern": "^([0-9]{1,2}:)?[0-9]{2}:[0-9]{2}$"
+          },
+          "end": {
+            "type": "string",
+            "description": "Время окончания сегмента (опционально)",
+            "pattern": "^([0-9]{1,2}:)?[0-9]{2}:[0-9]{2}$"
+          },
+          "speaker": {
+            "type": "string",
+            "description": "Имя спикера (если несколько)"
+          },
+          "text": {
+            "type": "string",
+            "description": "Текст транскрипции"
+          },
+          "annotations": {
+            "type": "array",
+            "description": "Аннотации (визуальные элементы, текст на экране)",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": ["VISUAL", "TEXT", "ACTION", "SOUND"]
+                },
+                "content": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "taxonomy_analysis": {
+      "type": "object",
+      "description": "Таксономический анализ видео",
+      "properties": {
+        "workflows": {
+          "type": "array",
+          "description": "Идентифицированные рабочие процессы",
+          "items": {
+            "type": "object",
+            "required": ["workflow_name", "objective", "steps"],
+            "properties": {
+              "workflow_id": {
+                "type": "string",
+                "description": "Идентификатор workflow (WF-XXX-NNN)"
+              },
+              "workflow_name": {
+                "type": "string",
+                "description": "Название рабочего процесса"
+              },
+              "objective": {
+                "type": "string",
+                "description": "Цель рабочего процесса"
+              },
+              "steps": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Последовательность шагов"
+              },
+              "duration": {
+                "type": "string",
+                "description": "Примерная продолжительность выполнения"
+              },
+              "complexity": {
+                "type": "string",
+                "enum": ["Low", "Medium", "High", "Critical"],
+                "description": "Уровень сложности"
+              },
+              "tools_used": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Используемые инструменты"
+              },
+              "input": {
+                "type": "string",
+                "description": "Входные данные"
+              },
+              "output": {
+                "type": "string",
+                "description": "Результат/выходные данные"
+              },
+              "department": {
+                "type": "string",
+                "description": "Код департамента (AID, DEV, DGN, etc.)"
+              }
+            }
+          }
+        },
+        "action_verbs": {
+          "type": "object",
+          "description": "Категоризированные глаголы действий",
+          "properties": {
+            "creation_verbs": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Create, Generate, Design, Build, Produce"
+            },
+            "modification_verbs": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Edit, Refine, Optimize, Enhance, Update"
+            },
+            "analysis_verbs": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Analyze, Review, Evaluate, Research, Assess"
+            },
+            "organization_verbs": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Organize, Structure, Categorize, Schedule"
+            },
+            "communication_verbs": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Present, Share, Publish, Export, Deliver"
+            },
+            "browser_agentic_operations": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Watch, Trigger, Execute, Connect, Navigate, Click"
+            },
+            "data_operations": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Parse, Extract, Webhook, Scrape, Import, Export"
+            }
+          }
+        },
+        "task_chains": {
+          "type": "array",
+          "description": "Цепочки задач в формате Step1 → Step2 → Step3 → Output",
+          "items": { "type": "string" }
+        },
+        "responsibilities_vocabulary": {
+          "type": "object",
+          "description": "Словарь обязанностей и ролей",
+          "properties": {
+            "roles": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Роли (Business Owner, Developer, etc.)"
+            },
+            "activities": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Виды деятельности"
+            },
+            "skills": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Навыки"
+            }
+          }
+        },
+        "tools_matrix": {
+          "type": "array",
+          "description": "Матрица инструментов",
+          "items": {
+            "type": "object",
+            "required": ["tool", "category"],
+            "properties": {
+              "tool_id": {
+                "type": "string",
+                "description": "Идентификатор инструмента (TOOL-XXX-NNN)"
+              },
+              "tool": {
+                "type": "string",
+                "description": "Название инструмента"
+              },
+              "category": {
+                "type": "string",
+                "description": "Категория (Automation, CRM, Database, etc.)"
+              },
+              "purpose": {
+                "type": "string",
+                "description": "Назначение инструмента"
+              },
+              "used_for": {
+                "type": "string",
+                "description": "Для чего используется в данном контексте"
+              },
+              "vendor": {
+                "type": "string",
+                "description": "Производитель/компания"
+              },
+              "integrations": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Интеграции с другими инструментами"
+              }
+            }
+          }
+        },
+        "objects_deliverables": {
+          "type": "array",
+          "description": "Объекты и результаты работы",
+          "items": {
+            "type": "object",
+            "properties": {
+              "object_id": {
+                "type": "string",
+                "description": "Идентификатор объекта (OBJ-XXX-NNN)"
+              },
+              "name": {
+                "type": "string",
+                "description": "Название объекта/результата"
+              },
+              "type": {
+                "type": "string",
+                "enum": ["Design_Deliverable", "Document", "Media_Object", "Data_Asset", "Code_Artifact"],
+                "description": "Тип объекта"
+              },
+              "description": {
+                "type": "string",
+                "description": "Описание объекта"
+              },
+              "related_tools": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "related_workflows": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            }
+          }
+        },
+        "integration_patterns": {
+          "type": "array",
+          "description": "Паттерны интеграции",
+          "items": {
+            "type": "object",
+            "properties": {
+              "pattern_id": {
+                "type": "string",
+                "description": "Идентификатор паттерна (INT-XXX-NNN)"
+              },
+              "integration": {
+                "type": "string",
+                "description": "Название интеграции (Tool1 + Tool2)"
+              },
+              "purpose": {
+                "type": "string",
+                "description": "Назначение интеграции"
+              },
+              "flow": {
+                "type": "string",
+                "description": "Поток данных"
+              }
+            }
+          }
+        },
+        "business_concepts": {
+          "type": "array",
+          "description": "Бизнес-концепции и стратегии",
+          "items": { "type": "string" }
+        },
+        "optimization_techniques": {
+          "type": "array",
+          "description": "Техники оптимизации",
+          "items": {
+            "type": "object",
+            "properties": {
+              "technique_id": {
+                "type": "string",
+                "description": "Идентификатор техники (OPT-XXX-NNN)"
+              },
+              "optimization": {
+                "type": "string",
+                "description": "Название оптимизации"
+              },
+              "technique": {
+                "type": "string",
+                "description": "Описание техники"
+              },
+              "reason": {
+                "type": "string",
+                "description": "Причина/преимущество"
+              }
+            }
+          }
+        }
+      }
+    },
+    "processing_status": {
+      "type": "object",
+      "description": "Статус обработки транскрипции",
+      "properties": {
+        "phase_1_transcription": {
+          "type": "string",
+          "enum": ["pending", "in_progress", "complete"],
+          "default": "pending"
+        },
+        "phase_2_naming": {
+          "type": "string",
+          "enum": ["pending", "in_progress", "complete", "skipped"],
+          "default": "pending"
+        },
+        "phase_3_analysis": {
+          "type": "string",
+          "enum": ["pending", "in_progress", "complete"],
+          "default": "pending"
+        },
+        "phase_4_objects": {
+          "type": "string",
+          "enum": ["pending", "in_progress", "complete"],
+          "default": "pending"
+        },
+        "phase_5_gap_analysis": {
+          "type": "string",
+          "enum": ["pending", "in_progress", "complete"],
+          "default": "pending"
+        },
+        "phase_6_taxonomy_updates": {
+          "type": "string",
+          "enum": ["pending", "in_progress", "complete"],
+          "default": "pending"
+        },
+        "phase_7_reporting": {
+          "type": "string",
+          "enum": ["pending", "in_progress", "complete"],
+          "default": "pending"
+        },
+        "last_updated": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Дата последнего обновления"
+        },
+        "updated_by": {
+          "type": "string",
+          "description": "Кто обновил"
+        }
+      }
+    },
+    "analysis_files": {
+      "type": "array",
+      "description": "Связанные файлы анализа",
+      "items": {
+        "type": "object",
+        "properties": {
+          "file_name": { "type": "string" },
+          "file_path": { "type": "string" },
+          "type": {
+            "type": "string",
+            "enum": ["extraction", "gap_analysis", "mapping_report", "processing_summary"]
+          }
+        }
+      }
+    }
+  }
+}
+

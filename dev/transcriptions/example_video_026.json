@@ -1,0 +1,352 @@
+{
+  "video_id": "Video_026",
+  "video_title": "Automated Sales Dashboard Creation with n8n and Lovable",
+  "metadata": {
+    "channel": "AI Autokit",
+    "creator": "Unknown",
+    "channel_url": "",
+    "video_url": "",
+    "duration": "13:32",
+    "publication_date": "",
+    "language": "en",
+    "topics": [
+      "Sales Dashboard Automation",
+      "n8n Workflow Building",
+      "Lovable Integration",
+      "Google Sheets Database",
+      "Email Parsing with AI"
+    ],
+    "tools_referenced": [
+      "n8n",
+      "Lovable",
+      "Google Sheets",
+      "Deepseek R1",
+      "Stripe"
+    ],
+    "links_referenced": []
+  },
+  "description": "This video demonstrates how to create an automated sales dashboard using two distinct workflows in n8n. The first workflow ingests sales data from incoming emails, parses it with an AI agent, and updates a Google Sheet. The second workflow exposes this data via a secure webhook, which is then used by Lovable to build and display a dynamic, real-time sales dashboard with various charts and metrics.",
+  "tags": [
+    "n8n",
+    "automation",
+    "sales dashboard",
+    "lovable",
+    "webhook",
+    "ai agent",
+    "google sheets",
+    "no-code",
+    "workflow automation"
+  ],
+  "transcription": [
+    {
+      "start": "00:00",
+      "end": "00:06",
+      "speaker": "Host",
+      "text": "Hello everyone and welcome to another lesson. I'm very happy to have you here with me today.",
+      "annotations": []
+    },
+    {
+      "start": "00:06",
+      "end": "00:10",
+      "speaker": "Host",
+      "text": "Today we're going to do an exciting sales dashboard.",
+      "annotations": []
+    },
+    {
+      "start": "00:10",
+      "end": "00:28",
+      "speaker": "Host",
+      "text": "So the idea is today we're going to be able to, I mean, all of us, we have income. I mean, most of the people who watch my channel are people who have side income, side streams of income, and they make money on the side.",
+      "annotations": []
+    },
+    {
+      "start": "00:28",
+      "end": "00:58",
+      "speaker": "Host",
+      "text": "And I thought that maybe we can do an automation and tie that up with a lovable interface so we can do a sales dashboard that will give us the current sales, this month sales, past month sales, and also a year overview with pie charts. So we're going to do that today and I'm going to explain to you how we're going to do that step by step.",
+      "annotations": [
+        {
+          "type": "VISUAL",
+          "content": "Dashboard preview showing sales metrics and charts"
+        }
+      ]
+    }
+  ],
+  "taxonomy_analysis": {
+    "workflows": [
+      {
+        "workflow_id": "WF-AID-026-01",
+        "workflow_name": "Sales Email Ingestion Pipeline",
+        "objective": "Automatically capture sales data from incoming emails, parse with AI, and store in Google Sheets database",
+        "steps": [
+          "Email trigger watches for new unseen emails",
+          "Check if sender domain matches sales sources (Stripe, etc.)",
+          "Check if subject contains sales keywords (sold, sale, payment)",
+          "AI Agent (Deepseek R1) parses email and extracts structured data",
+          "Update Google Sheets database with product, price, date, type"
+        ],
+        "duration": "Real-time (triggered on email)",
+        "complexity": "High",
+        "tools_used": [
+          "n8n",
+          "Deepseek R1",
+          "Google Sheets"
+        ],
+        "input": "Sales notification emails (Stripe, etc.)",
+        "output": "Structured sales record in Google Sheets",
+        "department": "AID"
+      },
+      {
+        "workflow_id": "WF-AID-026-02",
+        "workflow_name": "Secure Sales Data Webhook API",
+        "objective": "Expose sales data via authenticated webhook for external dashboard consumption",
+        "steps": [
+          "Webhook trigger with authorization credentials",
+          "Fetch all records from Google Sheets sales database",
+          "Aggregate all items into single response",
+          "Respond to webhook with complete sales data"
+        ],
+        "duration": "On-demand (~246ms)",
+        "complexity": "Medium",
+        "tools_used": [
+          "n8n",
+          "Google Sheets"
+        ],
+        "input": "Authenticated webhook request",
+        "output": "JSON array of all sales records",
+        "department": "AID"
+      },
+      {
+        "workflow_id": "WF-AID-026-03",
+        "workflow_name": "Lovable Dashboard Generation",
+        "objective": "Create visual sales dashboard using AI-powered no-code platform",
+        "steps": [
+          "Write detailed prompt describing dashboard requirements",
+          "Attach reference image for visual style",
+          "Submit to Lovable for generation",
+          "Review and iterate on generated dashboard",
+          "Connect to webhook API for live data"
+        ],
+        "duration": "5-10 minutes",
+        "complexity": "Medium",
+        "tools_used": [
+          "Lovable"
+        ],
+        "input": "Prompt + reference image + webhook URL",
+        "output": "Live interactive sales dashboard",
+        "department": "AID"
+      }
+    ],
+    "action_verbs": {
+      "creation_verbs": [
+        "Create (dashboard, workflow, credentials)",
+        "Build (automation)",
+        "Generate (JSON, dashboard)"
+      ],
+      "modification_verbs": [
+        "Update (database, information)",
+        "Change (date, price)",
+        "Refresh (dashboard)"
+      ],
+      "analysis_verbs": [
+        "Check (sender, subject)",
+        "Analyze (email)",
+        "Parse (email body)"
+      ],
+      "organization_verbs": [
+        "Categorize (sales information)",
+        "Structure (output)",
+        "Aggregate (items)"
+      ],
+      "communication_verbs": [
+        "Send (notification)",
+        "Respond (to webhook)",
+        "Trigger (workflow)"
+      ],
+      "browser_agentic_operations": [
+        "Wait (for email)",
+        "Execute (workflow)",
+        "Attach (account)"
+      ],
+      "data_operations": [
+        "Parse (email)",
+        "Extract (product, amount, date)",
+        "Output (JSON schema)",
+        "Aggregate (into one field)"
+      ]
+    },
+    "task_chains": [
+      "Email Received → Domain Check → Subject Check → AI Parse → Google Sheets Update",
+      "Webhook Request → Authorization → Fetch Data → Aggregate → JSON Response",
+      "Prompt + Image → Lovable Generation → Dashboard Review → Webhook Connection → Live Dashboard"
+    ],
+    "responsibilities_vocabulary": {
+      "roles": [
+        "Content Creator",
+        "Side Business Owner",
+        "Freelancer",
+        "Automation Developer"
+      ],
+      "activities": [
+        "Tracking side income streams",
+        "Building automated dashboards",
+        "Monitoring sales performance",
+        "Creating workflow automations"
+      ],
+      "skills": [
+        "n8n workflow building",
+        "AI agent configuration",
+        "Webhook API design",
+        "No-code dashboard creation"
+      ]
+    },
+    "tools_matrix": [
+      {
+        "tool_id": "TOOL-AUT-001",
+        "tool": "n8n",
+        "category": "Automation",
+        "purpose": "Workflow automation platform",
+        "used_for": "Email processing, data routing, webhook APIs",
+        "vendor": "n8n GmbH",
+        "integrations": [
+          "Google Sheets",
+          "Email (IMAP)",
+          "Webhooks"
+        ]
+      },
+      {
+        "tool_id": "TOOL-AI-099",
+        "tool": "Deepseek R1",
+        "category": "AI/LLM",
+        "purpose": "Thinking/reasoning AI model",
+        "used_for": "Email content parsing and structured data extraction",
+        "vendor": "Deepseek",
+        "integrations": [
+          "n8n AI Agent"
+        ]
+      },
+      {
+        "tool_id": "TOOL-NOC-010",
+        "tool": "Lovable",
+        "category": "No-Code/AI Builder",
+        "purpose": "AI-powered app and dashboard generation",
+        "used_for": "Creating visual sales dashboard from prompt",
+        "vendor": "Lovable",
+        "integrations": [
+          "Webhooks",
+          "APIs"
+        ]
+      },
+      {
+        "tool_id": "TOOL-DAT-001",
+        "tool": "Google Sheets",
+        "category": "Database/Spreadsheet",
+        "purpose": "Cloud-based data storage",
+        "used_for": "Sales data database (product, price, type, date)",
+        "vendor": "Google",
+        "integrations": [
+          "n8n"
+        ]
+      }
+    ],
+    "objects_deliverables": [
+      {
+        "object_id": "OBJ-DAT-026-01",
+        "name": "Sales Database Schema",
+        "type": "Data_Asset",
+        "description": "Google Sheets database with columns: product, price, type, date",
+        "related_tools": [
+          "Google Sheets"
+        ],
+        "related_workflows": [
+          "WF-AID-026-01",
+          "WF-AID-026-02"
+        ]
+      },
+      {
+        "object_id": "OBJ-VIS-026-01",
+        "name": "Sales Dashboard",
+        "type": "Design_Deliverable",
+        "description": "Interactive dashboard with current month sales, past month sales, year overview, pie charts",
+        "related_tools": [
+          "Lovable"
+        ],
+        "related_workflows": [
+          "WF-AID-026-03"
+        ]
+      },
+      {
+        "object_id": "OBJ-API-026-01",
+        "name": "Authenticated Sales Webhook",
+        "type": "Code_Artifact",
+        "description": "Secure webhook API endpoint with authorization header protection",
+        "related_tools": [
+          "n8n"
+        ],
+        "related_workflows": [
+          "WF-AID-026-02"
+        ]
+      }
+    ],
+    "integration_patterns": [
+      {
+        "pattern_id": "INT-EML-026-01",
+        "integration": "Email + n8n + AI Agent",
+        "purpose": "Extract structured data from unstructured email content",
+        "flow": "Email Body → Domain/Subject Filters → AI Parser → Structured JSON"
+      },
+      {
+        "pattern_id": "INT-API-026-01",
+        "integration": "n8n Webhook + Lovable",
+        "purpose": "Provide live data to external dashboard",
+        "flow": "Dashboard Request → Webhook → Google Sheets → Aggregated Response"
+      },
+      {
+        "pattern_id": "INT-SEC-026-01",
+        "integration": "Webhook + Authorization Header",
+        "purpose": "Secure API endpoint access",
+        "flow": "Request → Header Validation → Data Access"
+      }
+    ],
+    "business_concepts": [
+      "Side Income Tracking",
+      "Multi-stream Revenue Monitoring",
+      "Real-time Sales Visibility",
+      "Automated Data Collection",
+      "Self-service Dashboard Creation"
+    ],
+    "optimization_techniques": [
+      {
+        "technique_id": "OPT-SEC-026-01",
+        "optimization": "Webhook Authorization",
+        "technique": "Add custom authorization header with long string password to webhook credentials",
+        "reason": "Protects sensitive sales data from unauthorized access"
+      },
+      {
+        "technique_id": "OPT-FLT-026-01",
+        "optimization": "Multi-layer Email Filtering",
+        "technique": "Check both sender domain AND subject keywords before processing",
+        "reason": "Prevents processing of non-sales emails (marketing, tax invoices)"
+      },
+      {
+        "technique_id": "OPT-AI-026-01",
+        "optimization": "Structured AI Output",
+        "technique": "Define JSON schema for AI agent output (product, amount, date, type)",
+        "reason": "Ensures consistent data format for database insertion"
+      }
+    ]
+  },
+  "processing_status": {
+    "phase_1_transcription": "complete",
+    "phase_2_naming": "complete",
+    "phase_3_analysis": "complete",
+    "phase_4_objects": "complete",
+    "phase_5_gap_analysis": "pending",
+    "phase_6_taxonomy_updates": "pending",
+    "phase_7_reporting": "pending",
+    "last_updated": "2025-12-01T12:00:00Z",
+    "updated_by": "AI Assistant"
+  },
+  "analysis_files": []
+}
+

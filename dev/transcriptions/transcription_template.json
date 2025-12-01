@@ -1,0 +1,109 @@
+{
+  "video_id": "Video_XXX",
+  "video_title": "",
+  "metadata": {
+    "channel": "",
+    "creator": "",
+    "channel_url": "",
+    "video_url": "",
+    "duration": "00:00",
+    "publication_date": "",
+    "language": "en",
+    "topics": [],
+    "tools_referenced": [],
+    "links_referenced": []
+  },
+  "description": "",
+  "tags": [],
+  "transcription": [
+    {
+      "start": "00:00",
+      "end": "00:00",
+      "speaker": "",
+      "text": "",
+      "annotations": []
+    }
+  ],
+  "taxonomy_analysis": {
+    "workflows": [
+      {
+        "workflow_id": "",
+        "workflow_name": "",
+        "objective": "",
+        "steps": [],
+        "duration": "",
+        "complexity": "Medium",
+        "tools_used": [],
+        "input": "",
+        "output": "",
+        "department": ""
+      }
+    ],
+    "action_verbs": {
+      "creation_verbs": [],
+      "modification_verbs": [],
+      "analysis_verbs": [],
+      "organization_verbs": [],
+      "communication_verbs": [],
+      "browser_agentic_operations": [],
+      "data_operations": []
+    },
+    "task_chains": [],
+    "responsibilities_vocabulary": {
+      "roles": [],
+      "activities": [],
+      "skills": []
+    },
+    "tools_matrix": [
+      {
+        "tool_id": "",
+        "tool": "",
+        "category": "",
+        "purpose": "",
+        "used_for": "",
+        "vendor": "",
+        "integrations": []
+      }
+    ],
+    "objects_deliverables": [
+      {
+        "object_id": "",
+        "name": "",
+        "type": "",
+        "description": "",
+        "related_tools": [],
+        "related_workflows": []
+      }
+    ],
+    "integration_patterns": [
+      {
+        "pattern_id": "",
+        "integration": "",
+        "purpose": "",
+        "flow": ""
+      }
+    ],
+    "business_concepts": [],
+    "optimization_techniques": [
+      {
+        "technique_id": "",
+        "optimization": "",
+        "technique": "",
+        "reason": ""
+      }
+    ]
+  },
+  "processing_status": {
+    "phase_1_transcription": "pending",
+    "phase_2_naming": "pending",
+    "phase_3_analysis": "pending",
+    "phase_4_objects": "pending",
+    "phase_5_gap_analysis": "pending",
+    "phase_6_taxonomy_updates": "pending",
+    "phase_7_reporting": "pending",
+    "last_updated": "",
+    "updated_by": ""
+  },
+  "analysis_files": []
+}
+
