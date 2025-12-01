@@ -22,7 +22,8 @@ import {
   Sparkles,
   FolderSync,
   ChevronDown,
-  X
+  X,
+  ChevronRight,
 } from 'lucide-react';
 import type { VideoQueueItem, VideoFormData, Status, Priority, Department } from '../lib/types';
 import { videoQueueAPI, type VideoQueueAPI, type SyncCSVResult } from '../lib/api';
@@ -31,6 +32,7 @@ import { Button } from './ui/Button';
 import { Modal } from './ui/Modal';
 import { VideoForm } from './VideoForm';
 import { FilterPanel, type FilterState } from './FilterPanel';
+import { VideoDetailView } from './VideoDetailView';
 
 // Transform API response to frontend type
 function transformAPIToFrontend(item: VideoQueueAPI): VideoQueueItem {
@@ -75,6 +77,9 @@ export function VideoQueueTable() {
   const [syncResult, setSyncResult] = useState<SyncCSVResult | null>(null);
   const [showSyncResult, setShowSyncResult] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  
+  // Video detail view state
+  const [selectedVideo, setSelectedVideo] = useState<VideoQueueItem | null>(null);
 
   // Fetch data from API
   const fetchData = async () => {
@@ -259,6 +264,16 @@ export function VideoQueueTable() {
     );
   }
 
+  // Show video detail view if a video is selected
+  if (selectedVideo) {
+    return (
+      <VideoDetailView 
+        video={selectedVideo} 
+        onBack={() => setSelectedVideo(null)} 
+      />
+    );
+  }
+
   return (
     <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-8rem)] relative">
 
@@ -383,20 +398,19 @@ export function VideoQueueTable() {
               <tbody className="divide-y divide-gray-100">
                 {filteredData.length > 0 ? (
                   filteredData.map((video) => (
-                    <tr key={video.id} className="hover:bg-gray-50/50 transition-colors group">
+                    <tr 
+                      key={video.id} 
+                      className="hover:bg-blue-50/50 transition-colors group cursor-pointer"
+                      onClick={() => setSelectedVideo(video)}
+                    >
                       <td className="px-6 py-4">
                         <div className="flex flex-col gap-1">
                           <div className="flex items-center gap-2 font-medium text-gray-900">
-                            <a 
-                              href={video.video_url} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="hover:text-blue-600 hover:underline flex items-center gap-1.5"
-                            >
+                            <div className="flex items-center gap-1.5 group-hover:text-blue-600 transition-colors">
                               <Youtube size={16} className="text-red-600" />
                               {video.video_title}
-                              <ExternalLink size={12} className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400" />
-                            </a>
+                              <ChevronRight size={14} className="opacity-0 group-hover:opacity-100 transition-opacity text-blue-500" />
+                            </div>
                           </div>
                           <div className="text-xs text-gray-500 flex items-center gap-2">
                             <span className="font-medium">{video.channel_name || 'Unknown Channel'}</span>
@@ -428,14 +442,14 @@ export function VideoQueueTable() {
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <button 
-                            onClick={() => openEdit(video)}
+                            onClick={(e) => { e.stopPropagation(); openEdit(video); }}
                             className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
                             title="Edit"
                           >
                             <Pencil size={16} />
                           </button>
                           <button 
-                            onClick={() => openDelete(video.id)}
+                            onClick={(e) => { e.stopPropagation(); openDelete(video.id); }}
                             className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
                             title="Delete"
                           >

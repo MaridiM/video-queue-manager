@@ -266,3 +266,29 @@ export const overviewAPI = {
 export const healthAPI = {
   check: () => fetchAPI<{ status: string; database: string; timestamp: string }>('/api/health'),
 };
+
+// =====================================================
+// PROMPTS API
+// =====================================================
+
+export interface PromptData {
+  promptId: string;
+  fileName: string;
+  content: string;
+  filePath: string;
+  lastModified: string;
+}
+
+export interface PromptListItem {
+  promptId: string;
+  fileName: string;
+  path: string;
+}
+
+export const promptsAPI = {
+  // Get all available prompts
+  getAll: () => fetchAPI<PromptListItem[]>('/api/prompts'),
+
+  // Get specific prompt by ID (e.g., 'PMT-004', 'PMT-090')
+  getById: (promptId: string) => fetchAPI<PromptData>(`/api/prompts/${promptId}`),
+};

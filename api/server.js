@@ -6,6 +6,11 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import pg from 'pg';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
+// ESM compatibility: __dirname equivalent
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Initialize Prisma with PostgreSQL adapter
 const connectionString = process.env.DATABASE_URL;
@@ -1302,6 +1307,105 @@ app.get('/api/health', async (req, res) => {
 });
 
 // =====================================================
+// PROMPTS API
+// =====================================================
+
+// GET /api/prompts/:promptId - Get prompt content by ID (e.g., PMT-004, PMT-090)
+app.get('/api/prompts/:promptId', async (req, res) => {
+  try {
+    const { promptId } = req.params;
+    
+    // Base path to ENTITIES/PROMPTS folder (relative to server.js location)
+    const promptsBasePath = path.join(__dirname, '..', '..', 'ENTITIES', 'PROMPTS');
+    
+    // Map of prompt IDs to their file names
+    const promptFiles = {
+      'PMT-004': 'PMT-004_Video_Transcription_v4.1.md',
+      'PMT-090': 'PMT-090_YouTube_Video_Processing.md',
+      'PMT-005': 'PMT-005_Video_Naming_Alternatives.md',
+      'PMT-006': 'PMT-006_Video_Analysis.md',
+      'PMT-007': 'PMT-007_Objects_Library_Extraction.md',
+      'PMT-008': 'PMT-008_Video_Analysis_Improvements.md',
+      'PMT-009': 'PMT-009_Taxonomy_Integration.md',
+      'PMT-010': 'PMT-010_Complete_Workflow_Full.md',
+      'PMT-011': 'PMT-011_Complete_Workflow_Short.md',
+      'PMT-012': 'PMT-012_Transcript_Processing_Workflow.md',
+    };
+    
+    const fileName = promptFiles[promptId.toUpperCase()];
+    
+    if (!fileName) {
+      return res.status(404).json({
+        success: false,
+        error: `Prompt "${promptId}" not found. Available prompts: ${Object.keys(promptFiles).join(', ')}`
+      });
+    }
+    
+    const filePath = path.join(promptsBasePath, fileName);
+    
+    // Check if file exists
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({
+        success: false,
+        error: `Prompt file not found: ${fileName}`
+      });
+    }
+    
+    // Read file content
+    const content = fs.readFileSync(filePath, 'utf-8');
+    
+    res.json({
+      success: true,
+      data: {
+        promptId: promptId.toUpperCase(),
+        fileName,
+        content,
+        filePath: filePath.replace(/\\/g, '/'),
+        lastModified: fs.statSync(filePath).mtime.toISOString()
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error reading prompt file:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// GET /api/prompts - List all available prompts
+app.get('/api/prompts', async (req, res) => {
+  try {
+    const promptsBasePath = path.join(__dirname, '..', '..', 'ENTITIES', 'PROMPTS');
+    
+    // Read all .md files in the PROMPTS directory
+    const files = fs.readdirSync(promptsBasePath)
+      .filter(file => file.endsWith('.md') && file.startsWith('PMT-'))
+      .map(fileName => {
+        const match = fileName.match(/^(PMT-\d+)/);
+        return {
+          promptId: match ? match[1] : fileName,
+          fileName,
+          path: path.join(promptsBasePath, fileName).replace(/\\/g, '/')
+        };
+      });
+    
+    res.json({
+      success: true,
+      data: files
+    });
+    
+  } catch (error) {
+    console.error('Error listing prompts:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// =====================================================
 // START SERVER
 // =====================================================
 
@@ -1326,6 +1430,8 @@ app.listen(PORT, () => {
   console.log(`   GET  /api/researches`);
   console.log(`   GET  /api/overview`);
   console.log(`   GET  /api/health`);
+  console.log(`   GET  /api/prompts`);
+  console.log(`   GET  /api/prompts/:promptId`);
 });
 
 // Graceful shutdown
