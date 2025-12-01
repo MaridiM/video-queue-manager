@@ -76,6 +76,11 @@ export function VideoDetailView({ video, onBack }: VideoDetailViewProps) {
   const [aiResult, setAiResult] = useState<ProcessedTranscription | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiAvailable, setAiAvailable] = useState<boolean | null>(null);
+  const [aiProvider, setAiProvider] = useState<'google' | 'openai'>('google');
+  const [googleConfigured, setGoogleConfigured] = useState(false);
+  const [openaiConfigured, setOpenaiConfigured] = useState(false);
+  const [googleModel, setGoogleModel] = useState('gemini-2.0-flash');
+  const [openaiModel, setOpenaiModel] = useState('gpt-4o-mini');
   
   const youtubeId = extractYouTubeId(video.video_url);
   
@@ -84,6 +89,11 @@ export function VideoDetailView({ video, onBack }: VideoDetailViewProps) {
     transcriptionAPI.getStatus().then(result => {
       if (result.success && result.data) {
         setAiAvailable(result.data.aiProcessing);
+        setGoogleConfigured(result.data.googleAIConfigured);
+        setOpenaiConfigured(result.data.openAIConfigured);
+        setAiProvider(result.data.defaultProvider || 'google');
+        if (result.data.googleModel) setGoogleModel(result.data.googleModel);
+        if (result.data.openaiModel) setOpenaiModel(result.data.openaiModel);
       }
     });
   }, []);
@@ -176,7 +186,8 @@ export function VideoDetailView({ video, onBack }: VideoDetailViewProps) {
     const result = await transcriptionAPI.processWithAI({
       videoUrl: video.video_url,
       videoTitle: video.video_title,
-      saveToFile: true
+      saveToFile: true,
+      provider: aiProvider
     });
     
     if (result.success && result.data) {
@@ -448,6 +459,7 @@ export function VideoDetailView({ video, onBack }: VideoDetailViewProps) {
         isOpen={showTranscriptionModal}
         onClose={() => setShowTranscriptionModal(false)}
         title="Generate Transcription"
+        size="lg"
       >
         <div className="space-y-4">
           {/* Tabs */}
@@ -614,7 +626,9 @@ export function VideoDetailView({ video, onBack }: VideoDetailViewProps) {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-slate-900">Полный AI Pipeline</p>
-                  <p className="text-sm text-slate-600">YouTube → OpenAI GPT-4 → Файл</p>
+                  <p className="text-sm text-slate-600">
+                    YouTube → {aiProvider === 'google' ? googleModel : openaiModel} → Файл
+                  </p>
                 </div>
                 {aiAvailable === false && (
                   <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs font-medium rounded-lg">
@@ -631,28 +645,64 @@ export function VideoDetailView({ video, onBack }: VideoDetailViewProps) {
                   </div>
                   <h3 className="text-lg font-semibold text-slate-900 mb-2">Гибридная обработка</h3>
                   <p className="text-sm text-slate-500 mb-4 max-w-sm mx-auto">
-                    Автоматическое получение субтитров, форматирование через GPT-4 по шаблону PMT-004, 
+                    Автоматическое получение субтитров, форматирование через <strong>{aiProvider === 'google' ? googleModel : openaiModel}</strong> по шаблону PMT-004, 
                     и сохранение в файл.
                   </p>
+                  
+                  {/* AI Provider Selector */}
+                  <div className="flex items-center justify-center gap-2 mb-4">
+                    <button
+                      onClick={() => setAiProvider('google')}
+                      disabled={!googleConfigured}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                        aiProvider === 'google'
+                          ? 'bg-blue-500 text-white shadow-md'
+                          : googleConfigured
+                            ? 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                            : 'bg-slate-50 text-slate-400 cursor-not-allowed'
+                      }`}
+                    >
+                      🌐 Google AI
+                    </button>
+                    <button
+                      onClick={() => setAiProvider('openai')}
+                      disabled={!openaiConfigured}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                        aiProvider === 'openai'
+                          ? 'bg-emerald-500 text-white shadow-md'
+                          : openaiConfigured
+                            ? 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                            : 'bg-slate-50 text-slate-400 cursor-not-allowed'
+                      }`}
+                    >
+                      ✨ OpenAI
+                    </button>
+                  </div>
                   
                   <div className="flex items-center justify-center gap-2 text-xs text-slate-400 mb-6">
                     <span className="px-2 py-1 bg-slate-100 rounded">~30-60 сек</span>
                     <span>•</span>
-                    <span className="px-2 py-1 bg-slate-100 rounded">~$0.02-0.05</span>
+                    <span className="px-2 py-1 bg-slate-100 rounded">
+                      {aiProvider === 'google' ? '~$0.001-0.01' : '~$0.02-0.05'}
+                    </span>
                   </div>
                   
                   <Button 
                     onClick={handleProcessWithAI} 
                     disabled={aiAvailable === false}
-                    className="px-8 bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700"
+                    className={`px-8 ${
+                      aiProvider === 'google' 
+                        ? 'bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600'
+                        : 'bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700'
+                    }`}
                   >
                     <Wand2 size={18} className="mr-2" />
-                    Process with AI
+                    Process with {aiProvider === 'google' ? 'Google AI' : 'OpenAI'}
                   </Button>
                   
                   {aiAvailable === false && (
                     <p className="text-xs text-amber-600 mt-3">
-                      Добавьте OPENAI_API_KEY в файл .env для активации
+                      Настройте API ключи в разделе Settings
                     </p>
                   )}
                 </div>
@@ -662,8 +712,8 @@ export function VideoDetailView({ video, onBack }: VideoDetailViewProps) {
               {aiProcessing && (
                 <div className="flex flex-col items-center justify-center py-12">
                   <div className="relative">
-                    <Loader2 size={48} className="animate-spin text-purple-500" />
-                    <Sparkles size={20} className="absolute -top-1 -right-1 text-indigo-400 animate-pulse" />
+                    <Loader2 size={48} className={`animate-spin ${aiProvider === 'google' ? 'text-blue-500' : 'text-purple-500'}`} />
+                    <Sparkles size={20} className={`absolute -top-1 -right-1 animate-pulse ${aiProvider === 'google' ? 'text-cyan-400' : 'text-indigo-400'}`} />
                   </div>
                   <p className="text-slate-700 font-medium mt-4">Обработка видео...</p>
                   <p className="text-xs text-slate-400 mt-1">Это может занять 30-60 секунд</p>
@@ -676,8 +726,8 @@ export function VideoDetailView({ video, onBack }: VideoDetailViewProps) {
                       <span>Получение субтитров YouTube</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Loader2 size={16} className="animate-spin text-purple-500" />
-                      <span>Обработка через GPT-4...</span>
+                      <Loader2 size={16} className={`animate-spin ${aiProvider === 'google' ? 'text-blue-500' : 'text-purple-500'}`} />
+                      <span>Обработка через {aiProvider === 'google' ? googleModel : openaiModel}...</span>
                     </div>
                     <div className="flex items-center gap-2 opacity-50">
                       <div className="w-4 h-4 rounded-full border border-slate-300" />
@@ -711,7 +761,7 @@ export function VideoDetailView({ video, onBack }: VideoDetailViewProps) {
                     <div className="flex-1">
                       <p className="font-semibold text-emerald-800">Обработка завершена!</p>
                       <p className="text-sm text-emerald-600">
-                        Время: {(aiResult.timing.total / 1000).toFixed(1)}с
+                        Время: {(aiResult.timing.total / 1000).toFixed(1)}с • {aiResult.aiProvider === 'google' ? '🌐 Google' : '✨ OpenAI'} {aiResult.aiModel}
                       </p>
                     </div>
                   </div>
@@ -722,9 +772,15 @@ export function VideoDetailView({ video, onBack }: VideoDetailViewProps) {
                       <p className="text-xl font-bold text-blue-600">{aiResult.rawTranscriptLength}</p>
                       <p className="text-xs text-blue-700">Raw символов</p>
                     </div>
-                    <div className="bg-purple-50 rounded-xl p-3 text-center border border-purple-100">
-                      <p className="text-xl font-bold text-purple-600">{aiResult.processedLength}</p>
-                      <p className="text-xs text-purple-700">AI символов</p>
+                    <div className={`rounded-xl p-3 text-center border ${
+                      aiResult.aiProvider === 'google' 
+                        ? 'bg-cyan-50 border-cyan-100' 
+                        : 'bg-purple-50 border-purple-100'
+                    }`}>
+                      <p className={`text-xl font-bold ${aiResult.aiProvider === 'google' ? 'text-cyan-600' : 'text-purple-600'}`}>
+                        {aiResult.processedLength}
+                      </p>
+                      <p className={`text-xs ${aiResult.aiProvider === 'google' ? 'text-cyan-700' : 'text-purple-700'}`}>AI символов</p>
                     </div>
                     <div className="bg-emerald-50 rounded-xl p-3 text-center border border-emerald-100">
                       <p className="text-xl font-bold text-emerald-600">{(aiResult.timing.aiProcessing / 1000).toFixed(1)}s</p>

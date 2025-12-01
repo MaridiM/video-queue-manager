@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@distube/ytdl-core": "^4.16.12",
+    "@google/generative-ai": "^0.24.1",
     "@prisma/adapter-pg": "^7.0.1",
     "@prisma/client": "^7.0.1",
     "cors": "^2.8.5",

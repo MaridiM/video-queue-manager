@@ -7,6 +7,7 @@ import { KnowledgeMapViewer } from "./components/KnowledgeMapViewer";
 import { EntityExtractionViewer } from "./components/EntityExtractionViewer";
 import { BulkVideoImport } from "./components/BulkVideoImport";
 import { SearchQueueTable } from "./components/SearchQueueTable";
+import { Settings as SettingsPage } from "./pages/Settings";
 import {
   LayoutDashboard,
   ListVideo,
@@ -108,13 +109,13 @@ export default function App() {
             <Network size={20} />
             Knowledge Map
           </button> */}
-          {/* <button 
+          <button 
             onClick={() => setCurrentView('settings')}
             className={`w-full flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${currentView === 'settings' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
           >
             <Settings size={20} />
             Settings
-          </button> */}
+          </button>
         </nav>
 
         <div className="p-4 border-t border-slate-800">
@@ -182,13 +183,7 @@ export default function App() {
           {currentView === "extraction" && <EntityExtractionViewer />}
           {currentView === "knowledge" && <KnowledgeMapViewer />}
           {currentView === "search" && <SearchQueueTable />}
-          {currentView === "settings" && (
-            <div className="flex flex-col items-center justify-center h-[50vh] text-slate-500">
-              <Settings size={48} className="mb-4 text-slate-300" />
-              <p className="text-lg font-medium">Settings</p>
-              <p className="text-sm">System configuration pending</p>
-            </div>
-          )}
+          {currentView === "settings" && <SettingsPage />}
         </div>
       </main>
     </div>

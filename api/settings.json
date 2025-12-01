@@ -1,0 +1,11 @@
+{
+  "openai": {
+    "apiKey": "",
+    "enabled": false
+  },
+  "google": {
+    "apiKey": "AIzaSyDQqfUYNW-rbGzF6Y0pk0MxSZJ9BLyMJzU",
+    "enabled": true
+  },
+  "defaultProvider": "google"
+}

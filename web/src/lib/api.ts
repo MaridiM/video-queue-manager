@@ -324,6 +324,8 @@ export interface ProcessedTranscription {
   rawTranscriptLength: number;
   processedLength: number;
   savedFilePath: string | null;
+  aiProvider?: 'google' | 'openai';
+  aiModel?: string;
   timing: {
     transcriptFetch: number;
     aiProcessing: number;
@@ -336,6 +338,10 @@ export interface TranscriptionStatus {
   youtubeTranscript: boolean;
   aiProcessing: boolean;
   openAIConfigured: boolean;
+  googleAIConfigured: boolean;
+  defaultProvider: 'google' | 'openai';
+  googleModel?: string;
+  openaiModel?: string;
 }
 
 export const transcriptionAPI = {
@@ -352,7 +358,8 @@ export const transcriptionAPI = {
   processWithAI: (data: { 
     videoUrl: string; 
     videoTitle?: string; 
-    saveToFile?: boolean 
+    saveToFile?: boolean;
+    provider?: 'google' | 'openai';
   }) => fetchAPI<ProcessedTranscription>('/api/transcription/process', {
     method: 'POST',
     body: JSON.stringify(data),
@@ -360,4 +367,58 @@ export const transcriptionAPI = {
 
   // Check if AI processing is available
   getStatus: () => fetchAPI<TranscriptionStatus>('/api/transcription/status'),
+};
+
+// =====================================================
+// SETTINGS API
+// =====================================================
+
+export interface AIModelInfo {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export interface AIProviderSettings {
+  configured: boolean;
+  enabled: boolean;
+  model: string;
+  availableModels: AIModelInfo[];
+  apiKeyPreview: string | null;
+}
+
+export interface AISettings {
+  openai: AIProviderSettings;
+  google: AIProviderSettings;
+  defaultProvider: 'google' | 'openai';
+}
+
+export interface AISettingsUpdate {
+  openai?: { apiKey?: string; enabled?: boolean; model?: string };
+  google?: { apiKey?: string; enabled?: boolean; model?: string };
+  defaultProvider?: 'google' | 'openai';
+}
+
+export interface TestConnectionResult {
+  provider: string;
+  model: string;
+  response: string;
+}
+
+export const settingsAPI = {
+  // Get current AI settings
+  get: () => fetchAPI<AISettings>('/api/settings'),
+
+  // Update AI settings
+  update: (settings: AISettingsUpdate) => fetchAPI<AISettings>('/api/settings', {
+    method: 'PUT',
+    body: JSON.stringify(settings),
+  }),
+
+  // Test AI provider connection
+  testConnection: (provider: 'google' | 'openai', apiKey: string) => 
+    fetchAPI<TestConnectionResult>('/api/settings/test', {
+      method: 'POST',
+      body: JSON.stringify({ provider, apiKey }),
+    }),
 };

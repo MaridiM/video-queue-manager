@@ -9,11 +9,81 @@ import path from 'path';
 import https from 'https';
 import { fileURLToPath } from 'url';
 import OpenAI from 'openai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+
+// =====================================================
+// AI PROVIDERS INITIALIZATION
+// =====================================================
+
+// Settings file path for storing API keys
+const __filename_temp = fileURLToPath(import.meta.url);
+const __dirname_temp = path.dirname(__filename_temp);
+const settingsFilePath = path.join(__dirname_temp, 'settings.json');
+
+// Available models for each provider
+const AVAILABLE_MODELS = {
+  google: [
+    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', description: 'Новейшая, самая быстрая' },
+    { id: 'gemini-1.5-flash-latest', name: 'Gemini 1.5 Flash', description: 'Быстрая и экономичная' },
+    { id: 'gemini-1.5-pro-latest', name: 'Gemini 1.5 Pro', description: 'Высокое качество, дороже' },
+  ],
+  openai: [
+    { id: 'gpt-4o-mini', name: 'GPT-4o Mini', description: 'Быстрая и экономичная' },
+    { id: 'gpt-4o', name: 'GPT-4o', description: 'Высокое качество' },
+    { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', description: 'Мощная, большой контекст' },
+  ]
+};
+
+// Load saved settings
+function loadSettings() {
+  try {
+    if (fs.existsSync(settingsFilePath)) {
+      const saved = JSON.parse(fs.readFileSync(settingsFilePath, 'utf-8'));
+      // Ensure model field exists (migration for old settings)
+      if (saved.google && !saved.google.model) {
+        saved.google.model = 'gemini-2.0-flash';
+      }
+      if (saved.openai && !saved.openai.model) {
+        saved.openai.model = 'gpt-4o-mini';
+      }
+      return saved;
+    }
+  } catch (e) {
+    console.error('Error loading settings:', e);
+  }
+  return {
+    openai: { apiKey: process.env.OPENAI_API_KEY || '', enabled: !!process.env.OPENAI_API_KEY, model: 'gpt-4o-mini' },
+    google: { apiKey: process.env.GOOGLE_AI_API_KEY || '', enabled: !!process.env.GOOGLE_AI_API_KEY, model: 'gemini-2.0-flash' },
+    defaultProvider: 'google'
+  };
+}
+
+// Save settings to file
+function saveSettings(settings) {
+  fs.writeFileSync(settingsFilePath, JSON.stringify(settings, null, 2), 'utf-8');
+}
+
+// Current settings
+let aiSettings = loadSettings();
 
 // Initialize OpenAI client (optional - for AI processing)
-const openai = process.env.OPENAI_API_KEY 
-  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+const openai = aiSettings.openai.apiKey 
+  ? new OpenAI({ apiKey: aiSettings.openai.apiKey })
   : null;
+
+// Initialize Google AI (Gemini) client
+let googleAI = aiSettings.google.apiKey 
+  ? new GoogleGenerativeAI(aiSettings.google.apiKey)
+  : null;
+
+// Function to reinitialize AI clients after settings change
+function reinitializeAIClients() {
+  if (aiSettings.google.apiKey && aiSettings.google.enabled) {
+    googleAI = new GoogleGenerativeAI(aiSettings.google.apiKey);
+  } else {
+    googleAI = null;
+  }
+}
 
 // ESM compatibility: __dirname equivalent
 const __filename = fileURLToPath(import.meta.url);
@@ -1339,6 +1409,7 @@ app.get('/api/prompts/:promptId', async (req, res) => {
       'PMT-010': 'PMT-010_Complete_Workflow_Full.md',
       'PMT-011': 'PMT-011_Complete_Workflow_Short.md',
       'PMT-012': 'PMT-012_Transcript_Processing_Workflow.md',
+      'PMT-013': 'PMT-013_Script_Generation_from_Video.md',
     };
     
     const fileName = promptFiles[promptId.toUpperCase()];
@@ -1730,14 +1801,30 @@ app.get('/api/transcription/youtube/:videoId', async (req, res) => {
 // POST /api/transcription/process - Full pipeline: YouTube → AI Processing → Save
 app.post('/api/transcription/process', async (req, res) => {
   try {
-    const { videoUrl, videoId: providedVideoId, videoTitle, saveToFile = true } = req.body;
+    const { videoUrl, videoId: providedVideoId, videoTitle, saveToFile = true, provider: requestedProvider } = req.body;
     
-    // Check if OpenAI is configured
-    if (!openai) {
-      return res.status(503).json({
-        success: false,
-        error: 'OpenAI API not configured. Please add OPENAI_API_KEY to .env file.'
-      });
+    // Determine which AI provider to use
+    const provider = requestedProvider || aiSettings.defaultProvider;
+    const useGoogle = provider === 'google' && googleAI && aiSettings.google.enabled;
+    const useOpenAI = provider === 'openai' && openai && aiSettings.openai.enabled;
+    
+    // Check if any AI is configured
+    if (!useGoogle && !useOpenAI) {
+      // Fallback: try any available provider
+      if (googleAI && aiSettings.google.enabled) {
+        // Use Google as fallback
+      } else if (openai && aiSettings.openai.enabled) {
+        // Use OpenAI as fallback  
+      } else {
+        return res.status(503).json({
+          success: false,
+          error: 'No AI provider configured. Please add API key in Settings.',
+          providers: {
+            google: { configured: !!aiSettings.google.apiKey, enabled: aiSettings.google.enabled },
+            openai: { configured: !!aiSettings.openai.apiKey, enabled: aiSettings.openai.enabled }
+          }
+        });
+      }
     }
     
     const videoId = providedVideoId || extractYouTubeVideoId(videoUrl);
@@ -1749,8 +1836,12 @@ app.post('/api/transcription/process', async (req, res) => {
       });
     }
     
+    // Determine actual provider to use
+    const actualProvider = useGoogle ? 'google' : (useOpenAI ? 'openai' : (googleAI && aiSettings.google.enabled ? 'google' : 'openai'));
+    
     console.log(`\n🚀 Starting full transcription pipeline for: ${videoId}`);
     console.log(`   Video title: ${videoTitle || 'Unknown'}`);
+    console.log(`   AI Provider: ${actualProvider.toUpperCase()}`);
     
     // ========================================
     // STEP 1: Fetch YouTube Transcript
@@ -1796,9 +1887,9 @@ app.post('/api/transcription/process', async (req, res) => {
     console.log(`   ✅ Loaded prompt template (${promptTemplate.length} characters)`);
     
     // ========================================
-    // STEP 3: Process with OpenAI
+    // STEP 3: Process with AI (Google Gemini or OpenAI)
     // ========================================
-    console.log(`\n🤖 Step 3: Processing with OpenAI GPT-4...`);
+    console.log(`\n🤖 Step 3: Processing with ${actualProvider === 'google' ? 'Google Gemini' : 'OpenAI GPT-4'}...`);
     const startStep3 = Date.now();
     
     const systemPrompt = `You are a video transcription specialist. Follow the instructions in the provided template exactly.
@@ -1820,33 +1911,61 @@ ${promptTemplate}
 Now process the raw transcript above following the instructions template. Output the complete structured markdown document.`;
 
     let aiResponse;
+    let modelUsed;
+    
     try {
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-4o-mini', // Cost-effective model, ~$0.01-0.02 per video
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        max_tokens: 16000,
-        temperature: 0.3
-      });
-      
-      aiResponse = completion.choices[0]?.message?.content;
-      
-      if (!aiResponse) {
-        throw new Error('Empty response from OpenAI');
+      if (actualProvider === 'google') {
+        // ========== GOOGLE GEMINI ==========
+        const googleModel = aiSettings.google.model || 'gemini-2.0-flash';
+        const model = googleAI.getGenerativeModel({ 
+          model: googleModel,
+          generationConfig: {
+            temperature: 0.3,
+            maxOutputTokens: 16000,
+          }
+        });
+        
+        const fullPrompt = `${systemPrompt}\n\n${userPrompt}`;
+        const result = await model.generateContent(fullPrompt);
+        aiResponse = result.response.text();
+        modelUsed = googleModel;
+        
+        if (!aiResponse) {
+          throw new Error('Empty response from Google AI');
+        }
+      } else {
+        // ========== OPENAI GPT-4 ==========
+        const openaiModel = aiSettings.openai.model || 'gpt-4o-mini';
+        const completion = await openai.chat.completions.create({
+          model: openaiModel,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt }
+          ],
+          max_tokens: 16000,
+          temperature: 0.3
+        });
+        
+        aiResponse = completion.choices[0]?.message?.content;
+        modelUsed = openaiModel;
+        
+        if (!aiResponse) {
+          throw new Error('Empty response from OpenAI');
+        }
       }
     } catch (aiError) {
-      console.error('   ❌ OpenAI error:', aiError.message);
+      console.error(`   ❌ ${actualProvider} error:`, aiError.message);
       return res.status(500).json({
         success: false,
-        error: `AI processing failed: ${aiError.message}`,
-        step: 'ai_processing'
+        error: `AI processing failed (${actualProvider}): ${aiError.message}`,
+        step: 'ai_processing',
+        provider: actualProvider
       });
     }
     
     const step3Time = Date.now() - startStep3;
     console.log(`   ✅ AI processing complete (${step3Time}ms)`);
+    console.log(`   Model: ${modelUsed}`);
     console.log(`   Output length: ${aiResponse.length} characters`);
     
     // ========================================
@@ -1887,6 +2006,8 @@ video_title: "${(videoTitle || 'Unknown').replace(/"/g, '\\"')}"
 video_url: https://www.youtube.com/watch?v=${videoId}
 processed_at: ${new Date().toISOString()}
 language: ${languageName}
+ai_provider: ${actualProvider}
+ai_model: ${modelUsed}
 ---
 
 ${aiResponse}`;
@@ -1911,6 +2032,8 @@ ${aiResponse}`;
         rawTranscriptLength: rawText.length,
         processedLength: aiResponse.length,
         savedFilePath: savedFilePath?.replace(/\\/g, '/'),
+        aiProvider: actualProvider,
+        aiModel: modelUsed,
         timing: {
           transcriptFetch: step1Time,
           aiProcessing: step3Time,
@@ -1935,10 +2058,165 @@ app.get('/api/transcription/status', (req, res) => {
     success: true,
     data: {
       youtubeTranscript: true,
-      aiProcessing: !!openai,
-      openAIConfigured: !!process.env.OPENAI_API_KEY
+      aiProcessing: !!(googleAI || openai),
+      openAIConfigured: !!(aiSettings.openai.apiKey && aiSettings.openai.enabled),
+      googleAIConfigured: !!(aiSettings.google.apiKey && aiSettings.google.enabled),
+      defaultProvider: aiSettings.defaultProvider,
+      googleModel: aiSettings.google.model || 'gemini-2.0-flash',
+      openaiModel: aiSettings.openai.model || 'gpt-4o-mini'
     }
   });
+});
+
+// =====================================================
+// SETTINGS API
+// =====================================================
+
+// GET /api/settings - Get current AI settings (without exposing full API keys)
+app.get('/api/settings', (req, res) => {
+  res.json({
+    success: true,
+    data: {
+      openai: {
+        configured: !!aiSettings.openai.apiKey,
+        enabled: aiSettings.openai.enabled,
+        model: aiSettings.openai.model || 'gpt-4o-mini',
+        availableModels: AVAILABLE_MODELS.openai,
+        apiKeyPreview: aiSettings.openai.apiKey 
+          ? `${aiSettings.openai.apiKey.substring(0, 7)}...${aiSettings.openai.apiKey.slice(-4)}`
+          : null
+      },
+      google: {
+        configured: !!aiSettings.google.apiKey,
+        enabled: aiSettings.google.enabled,
+        model: aiSettings.google.model || 'gemini-2.0-flash',
+        availableModels: AVAILABLE_MODELS.google,
+        apiKeyPreview: aiSettings.google.apiKey 
+          ? `${aiSettings.google.apiKey.substring(0, 7)}...${aiSettings.google.apiKey.slice(-4)}`
+          : null
+      },
+      defaultProvider: aiSettings.defaultProvider
+    }
+  });
+});
+
+// PUT /api/settings - Update AI settings
+app.put('/api/settings', (req, res) => {
+  try {
+    const { openai: openaiSettings, google: googleSettings, defaultProvider } = req.body;
+    
+    // Update OpenAI settings
+    if (openaiSettings !== undefined) {
+      if (openaiSettings.apiKey !== undefined) {
+        aiSettings.openai.apiKey = openaiSettings.apiKey;
+      }
+      if (openaiSettings.enabled !== undefined) {
+        aiSettings.openai.enabled = openaiSettings.enabled;
+      }
+      if (openaiSettings.model !== undefined) {
+        aiSettings.openai.model = openaiSettings.model;
+      }
+    }
+    
+    // Update Google AI settings
+    if (googleSettings !== undefined) {
+      if (googleSettings.apiKey !== undefined) {
+        aiSettings.google.apiKey = googleSettings.apiKey;
+      }
+      if (googleSettings.enabled !== undefined) {
+        aiSettings.google.enabled = googleSettings.enabled;
+      }
+      if (googleSettings.model !== undefined) {
+        aiSettings.google.model = googleSettings.model;
+      }
+    }
+    
+    // Update default provider
+    if (defaultProvider !== undefined) {
+      aiSettings.defaultProvider = defaultProvider;
+    }
+    
+    // Save settings to file
+    saveSettings(aiSettings);
+    
+    // Reinitialize AI clients
+    reinitializeAIClients();
+    
+    console.log('✅ AI Settings updated:', {
+      openai: { enabled: aiSettings.openai.enabled, configured: !!aiSettings.openai.apiKey, model: aiSettings.openai.model },
+      google: { enabled: aiSettings.google.enabled, configured: !!aiSettings.google.apiKey, model: aiSettings.google.model },
+      defaultProvider: aiSettings.defaultProvider
+    });
+    
+    res.json({
+      success: true,
+      data: {
+        openai: {
+          configured: !!aiSettings.openai.apiKey,
+          enabled: aiSettings.openai.enabled,
+          model: aiSettings.openai.model || 'gpt-4o-mini',
+          availableModels: AVAILABLE_MODELS.openai
+        },
+        google: {
+          configured: !!aiSettings.google.apiKey,
+          enabled: aiSettings.google.enabled,
+          model: aiSettings.google.model || 'gemini-2.0-flash',
+          availableModels: AVAILABLE_MODELS.google
+        },
+        defaultProvider: aiSettings.defaultProvider
+      }
+    });
+  } catch (error) {
+    console.error('Error updating settings:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST /api/settings/test - Test AI provider connection
+app.post('/api/settings/test', async (req, res) => {
+  try {
+    const { provider, apiKey } = req.body;
+    
+    if (provider === 'google') {
+      const testAI = new GoogleGenerativeAI(apiKey);
+      const model = testAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
+      const result = await model.generateContent('Say "Connection successful" in exactly those words.');
+      const response = result.response.text();
+      
+      res.json({
+        success: true,
+        data: {
+          provider: 'google',
+          model: 'gemini-1.5-flash-latest',
+          response: response.substring(0, 100)
+        }
+      });
+    } else if (provider === 'openai') {
+      const testOpenAI = new OpenAI({ apiKey });
+      const completion = await testOpenAI.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: 'Say "Connection successful" in exactly those words.' }],
+        max_tokens: 50
+      });
+      
+      res.json({
+        success: true,
+        data: {
+          provider: 'openai',
+          model: 'gpt-4o-mini',
+          response: completion.choices[0]?.message?.content?.substring(0, 100)
+        }
+      });
+    } else {
+      res.status(400).json({ success: false, error: 'Invalid provider. Use "google" or "openai".' });
+    }
+  } catch (error) {
+    console.error('API Test failed:', error);
+    res.status(400).json({ 
+      success: false, 
+      error: `Connection failed: ${error.message}` 
+    });
+  }
 });
 
 // =====================================================
@@ -1948,7 +2226,10 @@ app.get('/api/transcription/status', (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 API Server running on http://localhost:${PORT}`);
   console.log(`📊 Database: PostgreSQL (Prisma)`);
-  console.log(`🤖 OpenAI: ${openai ? 'Configured ✅' : 'Not configured ❌'}`);
+  console.log(`🤖 AI Providers:`);
+  console.log(`   Google AI (Gemini): ${googleAI && aiSettings.google.enabled ? 'Configured ✅' : 'Not configured ❌'}`);
+  console.log(`   OpenAI (GPT-4): ${openai && aiSettings.openai.enabled ? 'Configured ✅' : 'Not configured ❌'}`);
+  console.log(`   Default Provider: ${aiSettings.defaultProvider}`);
   console.log(`📁 Endpoints:`);
   console.log(`   GET  /api/search-queue`);
   console.log(`   POST /api/search-queue`);
@@ -1973,6 +2254,9 @@ app.listen(PORT, () => {
   console.log(`   GET  /api/transcription/youtube/:videoId`);
   console.log(`   POST /api/transcription/process`);
   console.log(`   GET  /api/transcription/status`);
+  console.log(`   GET  /api/settings`);
+  console.log(`   PUT  /api/settings`);
+  console.log(`   POST /api/settings/test`);
 });
 
 // Graceful shutdown
