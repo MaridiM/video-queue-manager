@@ -19,22 +19,18 @@ import {
   Loader2,
   AlertCircle,
   RefreshCw,
-  Folder,
-  FolderOpen,
-  Captions,
-  Download,
-  Play,
   Wand2,
   Save,
   CheckCircle,
 } from 'lucide-react';
 import type { VideoQueueItem } from '../lib/types';
-import { promptsAPI, transcriptionAPI, type PromptData, type TranscriptionData, type ProcessedTranscription } from '../lib/api';
+import { transcriptionAPI, type ProcessedTranscription } from '../lib/api';
 import { Button } from './ui/Button';
 import { StatusBadge, PriorityBadge } from './StatusBadge';
 import { Modal } from './ui/Modal';
 
-type ModalTab = 'prompt' | 'transcript' | 'ai-process';
+// Pipeline step type for visualizing progress
+type PipelineStep = 'idle' | 'fetching-captions' | 'captions-success' | 'captions-failed' | 'whisper-fallback' | 'ai-processing' | 'saving' | 'complete' | 'error';
 
 // Extract YouTube video ID from URL
 function extractYouTubeId(url: string): string | null {
@@ -58,18 +54,10 @@ interface VideoDetailViewProps {
 export function VideoDetailView({ video, onBack }: VideoDetailViewProps) {
   const [copied, setCopied] = useState(false);
   const [showTranscriptionModal, setShowTranscriptionModal] = useState(false);
-  const [activeTab, setActiveTab] = useState<ModalTab>('transcript');
   
-  // Prompt loading state
-  const [promptData, setPromptData] = useState<PromptData | null>(null);
-  const [promptLoading, setPromptLoading] = useState(false);
-  const [promptError, setPromptError] = useState<string | null>(null);
-  
-  // Transcript loading state
-  const [transcriptData, setTranscriptData] = useState<TranscriptionData | null>(null);
-  const [transcriptLoading, setTranscriptLoading] = useState(false);
-  const [transcriptError, setTranscriptError] = useState<string | null>(null);
-  const [transcriptCopied, setTranscriptCopied] = useState(false);
+  // Pipeline state - tracks current step in the workflow
+  const [pipelineStep, setPipelineStep] = useState<PipelineStep>('idle');
+  const [pipelineMessage, setPipelineMessage] = useState<string>('');
   
   // AI Processing state
   const [aiProcessing, setAiProcessing] = useState(false);
@@ -98,90 +86,25 @@ export function VideoDetailView({ video, onBack }: VideoDetailViewProps) {
     });
   }, []);
   
-  // Fetch prompt
-  const fetchPrompt = async () => {
-    if (promptData || promptLoading) return;
-    
-    setPromptLoading(true);
-    setPromptError(null);
-    
-    const result = await promptsAPI.getById('PMT-004');
-    
-    if (result.success && result.data) {
-      setPromptData(result.data);
-    } else {
-      setPromptError(result.error || 'Не удалось загрузить промпт');
-    }
-    
-    setPromptLoading(false);
-  };
-  
-  // Fetch YouTube transcript
-  const fetchTranscript = async () => {
-    if (transcriptLoading) return;
-    
-    setTranscriptLoading(true);
-    setTranscriptError(null);
-    
-    const result = await transcriptionAPI.fetchYouTube(video.video_url);
-    
-    if (result.success && result.data) {
-      setTranscriptData(result.data);
-    } else {
-      setTranscriptError(result.error || 'Не удалось получить транскрипцию');
-    }
-    
-    setTranscriptLoading(false);
-  };
-  
-  // Handle modal open
+  // Handle modal open - reset state
   const handleOpenTranscriptionModal = () => {
+    setPipelineStep('idle');
+    setPipelineMessage('');
+    setAiError(null);
     setShowTranscriptionModal(true);
   };
   
-  // Handle tab change
-  const handleTabChange = (tab: ModalTab) => {
-    setActiveTab(tab);
-    if (tab === 'prompt' && !promptData && !promptLoading) {
-      fetchPrompt();
-    }
-  };
-  
-  // Retry loading prompt
-  const handleRetryPrompt = async () => {
-    setPromptLoading(true);
-    setPromptError(null);
-    
-    const result = await promptsAPI.getById('PMT-004');
-    
-    if (result.success && result.data) {
-      setPromptData(result.data);
-    } else {
-      setPromptError(result.error || 'Не удалось загрузить промпт');
-    }
-    
-    setPromptLoading(false);
-  };
-  
-  // Copy transcript to clipboard
-  const handleCopyTranscript = async () => {
-    if (!transcriptData) return;
-    
-    try {
-      await navigator.clipboard.writeText(transcriptData.plainText);
-      setTranscriptCopied(true);
-      setTimeout(() => setTranscriptCopied(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy:', err);
-    }
-  };
-  
-  // Process with AI (full pipeline)
+  // Process with AI (full pipeline with step tracking)
   const handleProcessWithAI = async () => {
     if (aiProcessing) return;
     
     setAiProcessing(true);
     setAiError(null);
+    setAiResult(null);
+    
+    // Step 1: Fetching captions
+    setPipelineStep('fetching-captions');
+    setPipelineMessage('Получение субтитров YouTube...');
     
     const result = await transcriptionAPI.processWithAI({
       videoUrl: video.video_url,
@@ -191,8 +114,12 @@ export function VideoDetailView({ video, onBack }: VideoDetailViewProps) {
     });
     
     if (result.success && result.data) {
+      setPipelineStep('complete');
+      setPipelineMessage('Обработка завершена!');
       setAiResult(result.data);
     } else {
+      setPipelineStep('error');
+      setPipelineMessage(result.error || 'Ошибка обработки');
       setAiError(result.error || 'Ошибка AI обработки');
     }
     
@@ -454,190 +381,90 @@ export function VideoDetailView({ video, onBack }: VideoDetailViewProps) {
         </div>
       </div>
       
-      {/* Transcription Modal with Tabs */}
+      {/* AI Process Modal - Single View */}
       <Modal
         isOpen={showTranscriptionModal}
         onClose={() => setShowTranscriptionModal(false)}
-        title="Generate Transcription"
+        title="AI Transcription Pipeline"
         size="lg"
       >
         <div className="space-y-4">
-          {/* Tabs */}
-          <div className="flex gap-1 p-1 bg-slate-100 rounded-xl">
-            <button
-              onClick={() => handleTabChange('transcript')}
-              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg font-medium text-sm transition-all ${
-                activeTab === 'transcript'
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Captions size={16} />
-              <span className="hidden sm:inline">YouTube</span> Captions
-            </button>
-            <button
-              onClick={() => handleTabChange('ai-process')}
-              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg font-medium text-sm transition-all ${
-                activeTab === 'ai-process'
-                  ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Wand2 size={16} />
-              AI Process
-            </button>
-            <button
-              onClick={() => handleTabChange('prompt')}
-              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg font-medium text-sm transition-all ${
-                activeTab === 'prompt'
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <FileText size={16} />
-              PMT-004
-            </button>
+          {/* Pipeline Header - Always visible */}
+          <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl border border-purple-100">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-purple-200">
+              <Wand2 size={24} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-slate-900">Полный AI Pipeline</p>
+              <p className="text-sm text-slate-600">
+                YouTube Captions → {aiProvider === 'google' ? googleModel : openaiModel} → PMT-004 → Файл
+              </p>
+            </div>
+            {aiAvailable === false && (
+              <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs font-medium rounded-lg">
+                API не настроен
+              </span>
+            )}
           </div>
           
-          {/* Tab: YouTube Transcript */}
-          {activeTab === 'transcript' && (
-            <div className="space-y-4">
-              {/* Video Info */}
-              <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-red-50 to-rose-50 rounded-xl border border-red-100">
-                <div className="w-12 h-12 rounded-xl bg-red-600 flex items-center justify-center text-white shadow-lg shadow-red-200">
-                  <Youtube size={24} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-slate-900 truncate">{video.video_title}</p>
-                  <p className="text-sm text-slate-600">{video.channel_name || 'Unknown Channel'}</p>
-                </div>
+          {/* Pipeline Steps Visualization */}
+          <div className="flex items-center justify-between px-4 py-3 bg-slate-50 rounded-xl">
+            <div className={`flex flex-col items-center ${pipelineStep === 'fetching-captions' || pipelineStep === 'captions-success' ? 'opacity-100' : 'opacity-50'}`}>
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                pipelineStep === 'captions-success' || pipelineStep === 'ai-processing' || pipelineStep === 'saving' || pipelineStep === 'complete' 
+                  ? 'bg-emerald-500 text-white' 
+                  : pipelineStep === 'fetching-captions' 
+                    ? 'bg-blue-500 text-white' 
+                    : pipelineStep === 'captions-failed' || pipelineStep === 'whisper-fallback'
+                      ? 'bg-amber-500 text-white'
+                      : 'bg-slate-200 text-slate-500'
+              }`}>
+                {pipelineStep === 'fetching-captions' ? <Loader2 size={16} className="animate-spin" /> : 
+                 pipelineStep === 'captions-success' || pipelineStep === 'ai-processing' || pipelineStep === 'saving' || pipelineStep === 'complete' ? <Check size={16} /> : 
+                 <Youtube size={16} />}
               </div>
-              
-              {/* Not fetched yet - Show fetch button */}
-              {!transcriptData && !transcriptLoading && !transcriptError && (
-                <div className="text-center py-8">
-                  <div className="w-20 h-20 rounded-full bg-gradient-to-br from-emerald-100 to-teal-100 flex items-center justify-center mx-auto mb-4">
-                    <Captions size={40} className="text-emerald-600" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-slate-900 mb-2">Получить субтитры YouTube</h3>
-                  <p className="text-sm text-slate-500 mb-6 max-w-sm mx-auto">
-                    Автоматически загрузить субтитры видео с YouTube. Работает быстро (5-10 секунд).
-                  </p>
-                  <Button onClick={fetchTranscript} className="px-8">
-                    <Play size={18} className="mr-2" />
-                    Fetch Transcript
-                  </Button>
-                </div>
-              )}
-              
-              {/* Loading */}
-              {transcriptLoading && (
-                <div className="flex flex-col items-center justify-center py-12">
-                  <Loader2 size={48} className="animate-spin text-emerald-500 mb-4" />
-                  <p className="text-slate-600 font-medium">Загрузка субтитров...</p>
-                  <p className="text-xs text-slate-400 mt-1">Получение данных с YouTube API</p>
-                </div>
-              )}
-              
-              {/* Error */}
-              {transcriptError && !transcriptLoading && (
-                <div className="flex flex-col items-center justify-center py-8">
-                  <AlertCircle size={48} className="text-red-500 mb-4" />
-                  <p className="text-red-600 font-medium mb-2">Ошибка загрузки</p>
-                  <p className="text-slate-500 text-sm mb-4 text-center max-w-sm">{transcriptError}</p>
-                  <Button onClick={fetchTranscript}>
-                    <RefreshCw size={16} className="mr-2" />
-                    Повторить
-                  </Button>
-                </div>
-              )}
-              
-              {/* Transcript loaded */}
-              {transcriptData && !transcriptLoading && (
-                <>
-                  {/* Stats */}
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="bg-emerald-50 rounded-xl p-3 text-center border border-emerald-100">
-                      <p className="text-2xl font-bold text-emerald-600">{transcriptData.totalSegments}</p>
-                      <p className="text-xs text-emerald-700">Сегментов</p>
-                    </div>
-                    <div className="bg-blue-50 rounded-xl p-3 text-center border border-blue-100">
-                      <p className="text-2xl font-bold text-blue-600">{transcriptData.totalDuration}</p>
-                      <p className="text-xs text-blue-700">Длительность</p>
-                    </div>
-                    <div className="bg-purple-50 rounded-xl p-3 text-center border border-purple-100">
-                      <p className="text-2xl font-bold text-purple-600">{transcriptData.rawText.split(' ').length}</p>
-                      <p className="text-xs text-purple-700">Слов</p>
-                    </div>
-                  </div>
-                  
-                  {/* Transcript content */}
-                  <div className="bg-slate-900 rounded-xl p-4 max-h-[40vh] overflow-y-auto">
-                    <div className="space-y-2">
-                      {transcriptData.transcript.map((segment, index) => (
-                        <div key={index} className="flex gap-3 text-sm">
-                          <span className="text-emerald-400 font-mono shrink-0 w-16">
-                            [{segment.timestamp}]
-                          </span>
-                          <span className="text-slate-200">{segment.text}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  
-                  {/* Actions */}
-                  <div className="flex gap-3">
-                    <Button
-                      variant="outline"
-                      onClick={() => setShowTranscriptionModal(false)}
-                      className="flex-1"
-                    >
-                      Закрыть
-                    </Button>
-                    <Button
-                      onClick={handleCopyTranscript}
-                      className="flex-1"
-                    >
-                      {transcriptCopied ? (
-                        <>
-                          <Check size={16} className="mr-2" />
-                          Скопировано!
-                        </>
-                      ) : (
-                        <>
-                          <Copy size={16} className="mr-2" />
-                          Копировать текст
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </>
-              )}
+              <span className="text-[10px] mt-1 text-slate-500">Captions</span>
             </div>
-          )}
-          
-          {/* Tab: AI Process */}
-          {activeTab === 'ai-process' && (
-            <div className="space-y-4">
-              {/* Header */}
-              <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl border border-purple-100">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-purple-200">
-                  <Wand2 size={24} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-slate-900">Полный AI Pipeline</p>
-                  <p className="text-sm text-slate-600">
-                    YouTube → {aiProvider === 'google' ? googleModel : openaiModel} → Файл
-                  </p>
-                </div>
-                {aiAvailable === false && (
-                  <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs font-medium rounded-lg">
-                    API не настроен
-                  </span>
-                )}
+            <div className="flex-1 h-0.5 bg-slate-200 mx-2" />
+            <div className={`flex flex-col items-center ${pipelineStep === 'ai-processing' ? 'opacity-100' : 'opacity-50'}`}>
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                pipelineStep === 'saving' || pipelineStep === 'complete' 
+                  ? 'bg-emerald-500 text-white' 
+                  : pipelineStep === 'ai-processing' 
+                    ? 'bg-purple-500 text-white' 
+                    : 'bg-slate-200 text-slate-500'
+              }`}>
+                {pipelineStep === 'ai-processing' ? <Loader2 size={16} className="animate-spin" /> : 
+                 pipelineStep === 'saving' || pipelineStep === 'complete' ? <Check size={16} /> : 
+                 <Sparkles size={16} />}
               </div>
-              
-              {/* Not processed yet */}
+              <span className="text-[10px] mt-1 text-slate-500">AI</span>
+            </div>
+            <div className="flex-1 h-0.5 bg-slate-200 mx-2" />
+            <div className={`flex flex-col items-center ${pipelineStep === 'saving' || pipelineStep === 'complete' ? 'opacity-100' : 'opacity-50'}`}>
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                pipelineStep === 'complete' 
+                  ? 'bg-emerald-500 text-white' 
+                  : pipelineStep === 'saving' 
+                    ? 'bg-amber-500 text-white' 
+                    : 'bg-slate-200 text-slate-500'
+              }`}>
+                {pipelineStep === 'saving' ? <Loader2 size={16} className="animate-spin" /> : 
+                 pipelineStep === 'complete' ? <Check size={16} /> : 
+                 <Save size={16} />}
+              </div>
+              <span className="text-[10px] mt-1 text-slate-500">Save</span>
+            </div>
+          </div>
+
+          {/* Prompt Badge */}
+          <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 rounded-lg border border-blue-100">
+            <FileText size={14} className="text-blue-500" />
+            <span className="text-xs text-blue-700 font-medium">Prompt:</span>
+            <span className="text-xs text-blue-600 font-mono">PMT-004_Video_Transcription_v4.1</span>
+          </div>
+          
+          {/* Not processed yet */}
               {!aiResult && !aiProcessing && !aiError && (
                 <div className="text-center py-6">
                   <div className="w-20 h-20 rounded-full bg-gradient-to-br from-purple-100 to-indigo-100 flex items-center justify-center mx-auto mb-4">
@@ -828,128 +655,6 @@ export function VideoDetailView({ video, onBack }: VideoDetailViewProps) {
                   </div>
                 </>
               )}
-            </div>
-          )}
-          
-          {/* Tab: PMT-004 Prompt */}
-          {activeTab === 'prompt' && (
-            <div className="space-y-4">
-              {/* Loading State */}
-              {promptLoading && (
-                <div className="flex flex-col items-center justify-center py-12">
-                  <Loader2 size={48} className="animate-spin text-blue-500 mb-4" />
-                  <p className="text-slate-600">Загрузка промпта с сервера...</p>
-                  <p className="text-xs text-slate-400 mt-1">ENTITIES/PROMPTS/PMT-004_Video_Transcription_v4.1.md</p>
-                </div>
-              )}
-              
-              {/* Error State */}
-              {promptError && !promptLoading && (
-                <div className="flex flex-col items-center justify-center py-12">
-                  <AlertCircle size={48} className="text-red-500 mb-4" />
-                  <p className="text-red-600 font-medium mb-2">Ошибка загрузки</p>
-                  <p className="text-slate-500 text-sm mb-4 text-center">{promptError}</p>
-                  <Button onClick={handleRetryPrompt}>
-                    <RefreshCw size={16} className="mr-2" />
-                    Повторить
-                  </Button>
-                </div>
-              )}
-              
-              {/* Not loaded yet */}
-              {!promptData && !promptLoading && !promptError && (
-                <div className="text-center py-8">
-                  <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center mx-auto mb-4">
-                    <FileText size={40} className="text-blue-600" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-slate-900 mb-2">PMT-004 Prompt</h3>
-                  <p className="text-sm text-slate-500 mb-6 max-w-sm mx-auto">
-                    Загрузить инструкции для создания структурированной транскрипции с AI.
-                  </p>
-                  <Button onClick={fetchPrompt} className="px-8">
-                    <Download size={18} className="mr-2" />
-                    Загрузить промпт
-                  </Button>
-                </div>
-              )}
-              
-              {/* Content - Loaded Successfully */}
-              {promptData && !promptLoading && !promptError && (
-                <>
-                  <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-100">
-                    <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center text-white">
-                      <FileText size={20} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-slate-900">{promptData.promptId}</p>
-                      <p className="text-sm text-slate-600 truncate">{promptData.fileName}</p>
-                    </div>
-                    <div className="text-right text-xs text-slate-400">
-                      <p>Обновлено:</p>
-                      <p>{new Date(promptData.lastModified).toLocaleDateString('ru-RU')}</p>
-                    </div>
-                  </div>
-                  
-                  {/* File path indicator - beautiful breadcrumb style */}
-                  <div className="relative">
-                    <div className="flex items-center gap-1 px-4 py-3 bg-gradient-to-r from-amber-50 via-orange-50 to-yellow-50 rounded-xl border border-amber-200/60 text-xs overflow-x-auto shadow-sm">
-                      <FolderOpen size={16} className="text-amber-500 shrink-0 mr-1" />
-                      {promptData.filePath.split('/').filter(Boolean).map((segment, index, arr) => {
-                        const isLast = index === arr.length - 1;
-                        const isFile = isLast && segment.includes('.');
-                        
-                        return (
-                          <span key={index} className="flex items-center shrink-0">
-                            {index > 0 && (
-                              <span className="text-amber-300 mx-1 font-bold">/</span>
-                            )}
-                            {isFile ? (
-                              <span className="flex items-center gap-1.5 px-2.5 py-1 bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-semibold rounded-lg shadow-sm">
-                                <FileText size={12} />
-                                {segment}
-                              </span>
-                            ) : (
-                              <span className="flex items-center gap-1 px-2 py-1 text-amber-700 hover:bg-amber-100 rounded-md transition-colors">
-                                <Folder size={12} className="text-amber-500" />
-                                {segment}
-                              </span>
-                            )}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  </div>
-                  
-                  <div className="bg-slate-900 rounded-xl p-4 max-h-[40vh] overflow-y-auto">
-                    <pre className="text-sm text-slate-100 whitespace-pre-wrap font-mono leading-relaxed">
-                      {promptData.content}
-                    </pre>
-                  </div>
-                  
-                  <div className="flex gap-3 pt-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => setShowTranscriptionModal(false)}
-                      className="flex-1"
-                    >
-                      Закрыть
-                    </Button>
-                    <Button
-                      onClick={() => {
-                        if (promptData) {
-                          navigator.clipboard.writeText(promptData.content);
-                        }
-                      }}
-                      className="flex-1"
-                    >
-                      <Copy size={16} className="mr-2" />
-                      Копировать скрипт
-                    </Button>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
         </div>
       </Modal>
     </div>
