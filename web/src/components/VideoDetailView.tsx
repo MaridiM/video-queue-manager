@@ -24,7 +24,7 @@ import {
   CheckCircle,
 } from 'lucide-react';
 import type { VideoQueueItem } from '../lib/types';
-import { transcriptionAPI, type ProcessedTranscription } from '../lib/api';
+import { transcriptionAPI, promptsAPI, type ProcessedTranscription } from '../lib/api';
 import { Button } from './ui/Button';
 import { StatusBadge, PriorityBadge } from './StatusBadge';
 import { Modal } from './ui/Modal';
@@ -70,6 +70,10 @@ export function VideoDetailView({ video, onBack }: VideoDetailViewProps) {
   const [googleModel, setGoogleModel] = useState('gemini-2.0-flash');
   const [openaiModel, setOpenaiModel] = useState('gpt-4o-mini');
   
+  // Prompt copy state
+  const [promptCopying, setPromptCopying] = useState(false);
+  const [promptCopied, setPromptCopied] = useState(false);
+  
   const youtubeId = extractYouTubeId(video.video_url);
   
   // Check AI availability on mount
@@ -91,7 +95,26 @@ export function VideoDetailView({ video, onBack }: VideoDetailViewProps) {
     setPipelineStep('idle');
     setPipelineMessage('');
     setAiError(null);
+    setPromptCopied(false);
     setShowTranscriptionModal(true);
+  };
+  
+  // Copy PMT-004 prompt to clipboard
+  const handleCopyPrompt = async () => {
+    if (promptCopying) return;
+    
+    setPromptCopying(true);
+    try {
+      const result = await promptsAPI.getById('PMT-004');
+      if (result.success && result.data) {
+        await navigator.clipboard.writeText(result.data.content);
+        setPromptCopied(true);
+        setTimeout(() => setPromptCopied(false), 2000);
+      }
+    } catch (err) {
+      console.error('Failed to copy prompt:', err);
+    }
+    setPromptCopying(false);
   };
   
   // Process with AI (full pipeline with step tracking)
@@ -457,11 +480,36 @@ export function VideoDetailView({ video, onBack }: VideoDetailViewProps) {
             </div>
           </div>
 
-          {/* Prompt Badge */}
-          <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 rounded-lg border border-blue-100">
-            <FileText size={14} className="text-blue-500" />
-            <span className="text-xs text-blue-700 font-medium">Prompt:</span>
-            <span className="text-xs text-blue-600 font-mono">PMT-004_Video_Transcription_v4.1</span>
+          {/* Prompt Badge with Copy Button */}
+          <div className="flex items-center justify-between px-3 py-2 bg-blue-50 rounded-lg border border-blue-100">
+            <div className="flex items-center gap-2">
+              <FileText size={14} className="text-blue-500" />
+              <span className="text-xs text-blue-700 font-medium">Prompt:</span>
+              <span className="text-xs text-blue-600 font-mono">PMT-004_Video_Transcription_v4.1</span>
+            </div>
+            <button
+              onClick={handleCopyPrompt}
+              disabled={promptCopying}
+              className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-all ${
+                promptCopied
+                  ? 'bg-emerald-100 text-emerald-700'
+                  : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+              }`}
+            >
+              {promptCopying ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : promptCopied ? (
+                <>
+                  <Check size={12} />
+                  <span>Copied!</span>
+                </>
+              ) : (
+                <>
+                  <Copy size={12} />
+                  <span>Copy Prompt</span>
+                </>
+              )}
+            </button>
           </div>
           
           {/* Not processed yet */}
