@@ -4,6 +4,215 @@
 
 ---
 
+## [1.6.0] - 2025-12-01
+
+### Added - AI Settings Page & Multi-Provider Support
+
+Добавлена полноценная страница настроек AI провайдеров с поддержкой выбора моделей.
+
+#### 🆕 Новая страница Settings (`pages/Settings.tsx`)
+
+| Функция | Описание |
+|---------|----------|
+| **API Key Management** | Ввод, сохранение и маскирование ключей |
+| **Provider Toggle** | Включение/выключение провайдеров |
+| **Model Selection** | Выбор модели после сохранения ключа |
+| **Connection Test** | Тестирование API подключения |
+| **Default Provider** | Установка провайдера по умолчанию |
+
+#### 🤖 Поддерживаемые модели
+
+| Провайдер | Модели |
+|-----------|--------|
+| **Google AI Studio** | `gemini-2.0-flash` (default), `gemini-1.5-flash-latest`, `gemini-1.5-pro-latest` |
+| **OpenAI** | `gpt-4o-mini` (default), `gpt-4o`, `gpt-4-turbo` |
+
+#### 📡 Новые API эндпоинты
+
+```
+GET  /api/settings       - Получение настроек (ключи маскируются)
+PUT  /api/settings       - Обновление настроек (apiKey, model, enabled)
+POST /api/settings/test  - Тестирование подключения к провайдеру
+```
+
+#### 📦 Новые зависимости
+```bash
+npm install @google/generative-ai
+```
+
+#### 📁 Файлы изменены/добавлены
+- `apps/api/server.js` - Settings API, model selection, settings.json storage
+- `apps/web/src/lib/api.ts` - `settingsAPI`, новые типы `AISettings`, `AIModelInfo`
+- `apps/web/src/pages/Settings.tsx` - новая страница (полностью)
+- `apps/web/src/App.tsx` - добавлена навигация на Settings
+- `apps/web/src/components/VideoDetailView.tsx` - выбор провайдера в AI Process
+
+---
+
+## [1.6.1] - 2025-12-01
+
+### Fixed - Timestamps Preservation in AI Transcription
+
+Исправлена потеря таймкодов при AI обработке транскрипций.
+
+#### Проблема
+Таймкоды терялись при подготовке текста для AI:
+```javascript
+// ❌ До: таймкоды терялись
+const rawText = segments.map(s => s.text).join(' ');
+// Результат: "hey everyone my name is vishwas and welcome..."
+```
+
+#### Решение
+```javascript
+// ✅ После: таймкоды сохраняются
+const transcriptWithTimestamps = segments.map(s => {
+  const timestamp = formatTimestamp(s.startMs);
+  return `[${timestamp}] ${s.text}`;
+}).join('\n');
+// Результат:
+// [00:00] hey everyone my name is vishwas
+// [00:15] and welcome to the most comprehensive...
+```
+
+#### Обновлённый промпт для AI
+```
+## Transcript with Timestamps
+[00:00] hey everyone...
+[00:15] and welcome...
+
+IMPORTANT: Preserve the timestamps [MM:SS] in the Word-for-Word Transcription section.
+```
+
+#### Файлы изменены
+- `apps/api/server.js` - `transcriptWithTimestamps`, обновлённый `userPrompt`
+
+---
+
+## [1.5.0] - 2025-12-01
+
+### Added - AI Transcription Pipeline UI
+
+Полная переработка модального окна транскрипции с автоматизированным workflow.
+
+#### 🎬 Новый AI Pipeline Modal
+
+**Было:** 3 вкладки (YouTube Captions, AI Process, PMT-004)
+**Стало:** Единый экран AI Transcription Pipeline
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  🪄 Полный AI Pipeline                                       │
+│     YouTube Captions → Gemini/OpenAI → PMT-004 → Файл       │
+│                                                              │
+│  [○ Captions] ─── [○ AI] ─── [○ Save]   ← Pipeline Steps    │
+│                                                              │
+│  📄 Prompt: PMT-004_Video_Transcription_v4.1  [📋 Copy]     │
+│                                                              │
+│         🌐 Google AI    ✨ OpenAI                            │
+│              [🪄 Process with AI]                            │
+└──────────────────────────────────────────────────────────────┘
+```
+
+#### Новые функции:
+- ✅ **Pipeline visualization** - визуальные шаги (Captions → AI → Save)
+- ✅ **Prompt badge** - показывает используемый промпт PMT-004
+- ✅ **Copy Prompt button** - копирование полного промпта в буфер
+- ✅ **Unified workflow** - всё под капотом в одном потоке
+- ✅ **Step tracking** - отслеживание текущего шага обработки
+
+#### Файлы изменены:
+- `VideoDetailView.tsx` - полная переработка модала транскрипции
+
+---
+
+### Added - PMT-013: Script Generation from Video
+
+Новый промпт для генерации сценариев на основе видео-транскрипций.
+
+**Файл:** `ENTITIES/PROMPTS/PMT-013_Script_Generation_from_Video.md`
+
+**Назначение:** Трансформация транскрипции в готовый сценарий для записи видео
+
+**Структура выхода:**
+- 🎬 Scene-by-scene script
+- 🎤 Narration (готовые фразы для начитки)
+- 📺 Visuals (что показывать на экране)
+- ⏱️ Timing (тайминги для каждой сцены)
+- 🔊 Audio notes
+- 📊 SEO elements
+
+**Папка для скриптов:** `ENTITIES/TASK_MANAGERS/RESEARCHES/03_SCRIPTS/`
+
+---
+
+### Fixed - Google Gemini Model Name
+
+**Проблема:** Ошибка 404 при вызове AI Process
+```
+models/gemini-1.5-flash is not found for API version v1beta
+```
+
+**Решение:** Обновлено название модели
+```javascript
+// Было:
+model: 'gemini-1.5-flash'
+
+// Стало:
+model: 'gemini-1.5-flash-latest'
+```
+
+**Файл:** `apps/api/server.js` (4 места)
+
+---
+
+### Updated - Modal Width & Responsiveness
+
+#### Generate Transcription Modal
+- **Размер:** +30% шире (`max-w-lg` → `max-w-2xl` через `size="lg"`)
+- **Адаптивность:** Отступы `p-2 sm:p-4` для разных экранов
+
+**Файлы:**
+- `Modal.tsx` - добавлен prop `size` с вариантами: `default`, `lg`, `xl`, `full`
+- `VideoDetailView.tsx` - использует `size="lg"`
+
+#### Settings Page
+- **Ширина:** `max-w-4xl` → `max-w-7xl` (896px → 1280px)
+- **Grid:** `lg:grid-cols-2` → `md:grid-cols-2` (раньше переключается)
+- **Адаптивность:** Размеры шрифтов, отступов, кнопок для mobile/tablet/desktop
+
+**Файл:** `apps/web/src/pages/Settings.tsx`
+
+---
+
+### Technical Changes
+
+#### Removed from VideoDetailView:
+- `activeTab` state и `handleTabChange`
+- `transcriptData`, `transcriptLoading`, `transcriptError` states
+- `promptData`, `promptLoading`, `promptError` states
+- `fetchTranscript()`, `fetchPrompt()`, `handleRetryPrompt()` functions
+- YouTube Captions tab UI
+- PMT-004 Prompt tab UI
+
+#### Added to VideoDetailView:
+- `pipelineStep` state для отслеживания шагов
+- `pipelineMessage` state для сообщений
+- `promptCopying`, `promptCopied` states для кнопки копирования
+- `handleCopyPrompt()` function
+- Pipeline steps visualization component
+
+#### Updated Imports:
+```typescript
+// Removed:
+Folder, FolderOpen, Captions, Download, Play
+
+// Kept:
+Youtube, Sparkles, FileText, Wand2, Save, CheckCircle, Loader2
+```
+
+---
+
 ## [1.4.3] - 2025-11-28
 
 ### Updated - Search Queue Form (Python Script Compatibility)
@@ -401,5 +610,5 @@ npm run dev
 
 ---
 
-**Last Updated:** 2025-11-28 15:30 UTC
+**Last Updated:** 2025-12-01 20:30 UTC
 
