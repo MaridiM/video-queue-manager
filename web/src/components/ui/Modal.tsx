@@ -30,7 +30,7 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
       <div 
-        className="relative w-full max-w-lg bg-white rounded-lg shadow-xl border border-gray-200 animate-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col"
+        className="relative w-full max-w-2xl bg-white rounded-xl shadow-2xl border border-gray-200 animate-in zoom-in-95 duration-200 max-h-[85vh] min-h-[60vh] flex flex-col"
         role="dialog"
         aria-modal="true"
       >

@@ -1,12 +1,15 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import { PrismaClient } from '@prisma/client';
+import pkg from '@prisma/client';
+const { PrismaClient } = pkg;
 import { PrismaPg } from '@prisma/adapter-pg';
 import pg from 'pg';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { YoutubeTranscript } from 'youtube-transcript';
+import OpenAI from 'openai';
 
 // ESM compatibility: __dirname equivalent
 const __filename = fileURLToPath(import.meta.url);
@@ -1408,6 +1411,263 @@ app.get('/api/prompts', async (req, res) => {
 });
 
 // =====================================================
+// YOUTUBE TRANSCRIPT API
+// =====================================================
+
+/**
+ * Format milliseconds to timestamp HH:MM:SS or MM:SS
+ */
+function formatTimestamp(ms) {
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  }
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+// POST /api/youtube/transcript - Get YouTube video transcript (captions)
+app.post('/api/youtube/transcript', async (req, res) => {
+  try {
+    const { video_url, video_id, include_timestamps = true } = req.body;
+    
+    // Extract video ID from URL or use provided ID
+    let videoId = video_id;
+    if (!videoId && video_url) {
+      videoId = extractVideoId(video_url);
+    }
+    
+    if (!videoId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Video ID or URL is required'
+      });
+    }
+    
+    console.log(`📝 Fetching transcript for video: ${videoId}`);
+    
+    // Fetch transcript from YouTube
+    const transcript = await YoutubeTranscript.fetchTranscript(videoId);
+    
+    if (!transcript || transcript.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'No transcript available for this video. The video may not have captions enabled.'
+      });
+    }
+    
+    // Format transcript
+    let formattedText;
+    if (include_timestamps) {
+      formattedText = transcript.map(t => 
+        `[${formatTimestamp(t.offset)}] ${t.text}`
+      ).join('\n');
+    } else {
+      formattedText = transcript.map(t => t.text).join(' ');
+    }
+    
+    // Calculate stats
+    const totalDuration = transcript.length > 0 
+      ? transcript[transcript.length - 1].offset + (transcript[transcript.length - 1].duration || 0)
+      : 0;
+    
+    console.log(`✅ Transcript fetched: ${transcript.length} segments, ~${Math.round(totalDuration / 1000 / 60)} minutes`);
+    
+    res.json({
+      success: true,
+      data: {
+        video_id: videoId,
+        transcript: formattedText,
+        segments: transcript.length,
+        total_duration_ms: totalDuration,
+        total_duration_formatted: formatTimestamp(totalDuration),
+        raw_segments: transcript // Include raw data for advanced use
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error fetching YouTube transcript:', error);
+    
+    // Handle specific YouTube transcript errors
+    let errorMessage = error.message;
+    if (error.message?.includes('Could not find captions')) {
+      errorMessage = 'Субтитры недоступны для этого видео. Возможно, автор отключил субтитры или видео слишком новое.';
+    } else if (error.message?.includes('Video unavailable')) {
+      errorMessage = 'Видео недоступно. Проверьте URL или ID видео.';
+    } else if (error.message?.includes('disabled')) {
+      errorMessage = 'Субтитры отключены для этого видео.';
+    }
+    
+    res.status(500).json({
+      success: false,
+      error: errorMessage
+    });
+  }
+});
+
+// =====================================================
+// AI TRANSCRIPTION FORMATTING API
+// =====================================================
+
+// Initialize OpenAI client (lazy initialization to avoid errors if API key not set)
+let openaiClient = null;
+function getOpenAIClient() {
+  if (!openaiClient && process.env.OPENAI_API_KEY) {
+    openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  }
+  return openaiClient;
+}
+
+// POST /api/transcription/format - Format transcript using AI (OpenAI GPT-4)
+app.post('/api/transcription/format', async (req, res) => {
+  try {
+    const { 
+      transcript, 
+      video_title, 
+      video_url, 
+      channel_name,
+      duration,
+      prompt_id = 'PMT-004' // Default to PMT-004
+    } = req.body;
+    
+    if (!transcript) {
+      return res.status(400).json({
+        success: false,
+        error: 'Transcript is required'
+      });
+    }
+    
+    // Check if OpenAI API key is configured
+    const openai = getOpenAIClient();
+    if (!openai) {
+      return res.status(503).json({
+        success: false,
+        error: 'OpenAI API key not configured. Add OPENAI_API_KEY to .env file.'
+      });
+    }
+    
+    console.log(`🤖 Starting AI formatting for: ${video_title || 'Unknown video'}`);
+    
+    // Load the prompt file
+    const promptsBasePath = path.join(__dirname, '..', '..', 'ENTITIES', 'PROMPTS');
+    const promptFiles = {
+      'PMT-004': 'PMT-004_Video_Transcription_v4.1.md',
+      'PMT-012': 'PMT-012_Transcript_Processing_Workflow.md',
+    };
+    
+    const promptFileName = promptFiles[prompt_id.toUpperCase()];
+    if (!promptFileName) {
+      return res.status(400).json({
+        success: false,
+        error: `Unsupported prompt: ${prompt_id}. Available: ${Object.keys(promptFiles).join(', ')}`
+      });
+    }
+    
+    const promptPath = path.join(promptsBasePath, promptFileName);
+    
+    if (!fs.existsSync(promptPath)) {
+      return res.status(404).json({
+        success: false,
+        error: `Prompt file not found: ${promptFileName}`
+      });
+    }
+    
+    const promptContent = fs.readFileSync(promptPath, 'utf-8');
+    
+    // Build the user message with video metadata and transcript
+    const userMessage = `
+## VIDEO METADATA
+- **Title:** ${video_title || 'Unknown'}
+- **Channel:** ${channel_name || 'Unknown'}  
+- **URL:** ${video_url || 'Unknown'}
+- **Duration:** ${duration || 'Unknown'}
+
+## RAW TRANSCRIPT
+\`\`\`
+${transcript}
+\`\`\`
+
+Please format this video transcript according to the instructions in the system prompt. Create a complete, structured markdown document.
+`;
+    
+    console.log(`📝 Sending to OpenAI (GPT-4o-mini)...`);
+    console.log(`   Prompt: ${prompt_id}`);
+    console.log(`   Transcript length: ${transcript.length} chars`);
+    
+    const startTime = Date.now();
+    
+    // Call OpenAI API
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini', // Cost-effective for formatting tasks
+      messages: [
+        { 
+          role: 'system', 
+          content: promptContent 
+        },
+        { 
+          role: 'user', 
+          content: userMessage 
+        }
+      ],
+      temperature: 0.3, // Lower temperature for consistent formatting
+      max_tokens: 16000, // Allow long outputs for full transcripts
+    });
+    
+    const elapsedTime = Date.now() - startTime;
+    const formattedContent = completion.choices[0].message.content;
+    
+    // Extract usage stats
+    const usage = completion.usage || {};
+    const estimatedCost = (
+      (usage.prompt_tokens || 0) * 0.00015 / 1000 + 
+      (usage.completion_tokens || 0) * 0.0006 / 1000
+    ).toFixed(4);
+    
+    console.log(`✅ AI formatting complete!`);
+    console.log(`   Time: ${(elapsedTime / 1000).toFixed(1)}s`);
+    console.log(`   Tokens: ${usage.prompt_tokens || 0} input, ${usage.completion_tokens || 0} output`);
+    console.log(`   Estimated cost: $${estimatedCost}`);
+    
+    res.json({
+      success: true,
+      data: {
+        formatted_content: formattedContent,
+        prompt_used: prompt_id,
+        model: 'gpt-4o-mini',
+        processing_time_ms: elapsedTime,
+        usage: {
+          prompt_tokens: usage.prompt_tokens || 0,
+          completion_tokens: usage.completion_tokens || 0,
+          total_tokens: usage.total_tokens || 0,
+          estimated_cost_usd: parseFloat(estimatedCost)
+        }
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error in AI formatting:', error);
+    
+    // Handle specific OpenAI errors
+    let errorMessage = error.message;
+    if (error.code === 'insufficient_quota') {
+      errorMessage = 'OpenAI API quota exceeded. Please check your billing.';
+    } else if (error.code === 'invalid_api_key') {
+      errorMessage = 'Invalid OpenAI API key. Please check OPENAI_API_KEY in .env';
+    } else if (error.code === 'rate_limit_exceeded') {
+      errorMessage = 'OpenAI rate limit exceeded. Please try again later.';
+    }
+    
+    res.status(500).json({
+      success: false,
+      error: errorMessage
+    });
+  }
+});
+
+// =====================================================
 // START SERVER
 // =====================================================
 
@@ -1434,6 +1694,8 @@ app.listen(PORT, () => {
   console.log(`   GET  /api/health`);
   console.log(`   GET  /api/prompts`);
   console.log(`   GET  /api/prompts/:promptId`);
+  console.log(`   POST /api/youtube/transcript`);
+  console.log(`   POST /api/transcription/format`);
 });
 
 // Graceful shutdown

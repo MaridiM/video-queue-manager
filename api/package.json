@@ -18,9 +18,11 @@
     "@prisma/client": "^7.0.1",
     "cors": "^2.8.5",
     "express": "^4.21.0",
+    "openai": "^6.9.1",
     "papaparse": "^5.4.1",
     "pg": "^8.16.3",
-    "prisma": "^7.0.1"
+    "prisma": "^7.0.1",
+    "youtube-transcript": "^1.2.1"
   },
   "devDependencies": {
     "dotenv": "^17.2.3"

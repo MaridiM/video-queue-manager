@@ -292,3 +292,66 @@ export const promptsAPI = {
   // Get specific prompt by ID (e.g., 'PMT-004', 'PMT-090')
   getById: (promptId: string) => fetchAPI<PromptData>(`/api/prompts/${promptId}`),
 };
+
+// =====================================================
+// YOUTUBE TRANSCRIPT API
+// =====================================================
+
+export interface TranscriptSegment {
+  text: string;
+  offset: number;
+  duration: number;
+}
+
+export interface TranscriptData {
+  video_id: string;
+  transcript: string;
+  segments: number;
+  total_duration_ms: number;
+  total_duration_formatted: string;
+  raw_segments: TranscriptSegment[];
+}
+
+export const youtubeAPI = {
+  // Get YouTube video transcript (captions/subtitles)
+  getTranscript: (videoUrl: string, includeTimestamps: boolean = true) => 
+    fetchAPI<TranscriptData>('/api/youtube/transcript', {
+      method: 'POST',
+      body: JSON.stringify({ 
+        video_url: videoUrl, 
+        include_timestamps: includeTimestamps 
+      }),
+    }),
+};
+
+// =====================================================
+// TRANSCRIPTION AI FORMATTING API
+// =====================================================
+
+export interface AIFormattingResult {
+  formatted_content: string;
+  prompt_used: string;
+  model: string;
+  processing_time_ms: number;
+  usage: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+    estimated_cost_usd: number;
+  };
+}
+
+export const transcriptionAPI = {
+  // Format transcript using AI (OpenAI GPT-4)
+  formatWithAI: (data: {
+    transcript: string;
+    video_title?: string;
+    video_url?: string;
+    channel_name?: string;
+    duration?: string;
+    prompt_id?: string; // Default: PMT-004
+  }) => fetchAPI<AIFormattingResult>('/api/transcription/format', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
+};
