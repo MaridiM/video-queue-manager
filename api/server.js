@@ -6,7 +6,14 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import pg from 'pg';
 import fs from 'fs';
 import path from 'path';
+import https from 'https';
 import { fileURLToPath } from 'url';
+import OpenAI from 'openai';
+
+// Initialize OpenAI client (optional - for AI processing)
+const openai = process.env.OPENAI_API_KEY 
+  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  : null;
 
 // ESM compatibility: __dirname equivalent
 const __filename = fileURLToPath(import.meta.url);
@@ -1408,12 +1415,540 @@ app.get('/api/prompts', async (req, res) => {
 });
 
 // =====================================================
+// TRANSCRIPTION API (Native YouTube Innertube)
+// =====================================================
+
+/**
+ * Format milliseconds to MM:SS or HH:MM:SS format
+ */
+function formatTimestamp(ms) {
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  
+  if (hours > 0) {
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  }
+  return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+}
+
+/**
+ * Extract YouTube video ID from various URL formats
+ */
+function extractYouTubeVideoId(url) {
+  if (!url) return null;
+  
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/v\/)([a-zA-Z0-9_-]{11})/,
+    /youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/,
+    /^([a-zA-Z0-9_-]{11})$/ // Just the video ID
+  ];
+  
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match) return match[1];
+  }
+  return null;
+}
+
+/**
+ * Make HTTPS POST request
+ */
+function httpsPost(url, body) {
+  return new Promise((resolve, reject) => {
+    const parsedUrl = new URL(url);
+    const data = JSON.stringify(body);
+    
+    const options = {
+      hostname: parsedUrl.hostname,
+      path: parsedUrl.pathname + parsedUrl.search,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(data),
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': '*/*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Origin': 'https://www.youtube.com',
+        'Referer': 'https://www.youtube.com/'
+      }
+    };
+    
+    const req = https.request(options, (res) => {
+      let body = '';
+      res.on('data', chunk => body += chunk);
+      res.on('end', () => {
+        try {
+          resolve({ data: JSON.parse(body), status: res.statusCode });
+        } catch (e) {
+          resolve({ data: body, status: res.statusCode });
+        }
+      });
+    });
+    
+    req.on('error', reject);
+    req.write(data);
+    req.end();
+  });
+}
+
+/**
+ * Make HTTPS GET request
+ */
+function httpsGet(url) {
+  return new Promise((resolve, reject) => {
+    https.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': '*/*'
+      }
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => resolve(data));
+    }).on('error', reject);
+  });
+}
+
+/**
+ * Fetch YouTube transcript using Innertube API
+ */
+async function fetchYouTubeTranscript(videoId) {
+  // Step 1: Get video player info via Innertube API
+  const playerResponse = await httpsPost(
+    'https://www.youtube.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8',
+    {
+      context: {
+        client: {
+          hl: 'en',
+          gl: 'US',
+          clientName: 'WEB',
+          clientVersion: '2.20231219.04.00'
+        }
+      },
+      videoId: videoId
+    }
+  );
+  
+  if (playerResponse.status !== 200) {
+    throw new Error('Failed to get video info from YouTube');
+  }
+  
+  const captions = playerResponse.data?.captions?.playerCaptionsTracklistRenderer;
+  if (!captions?.captionTracks?.length) {
+    throw new Error('No captions available for this video');
+  }
+  
+  // Get the first caption track (usually auto-generated English)
+  const track = captions.captionTracks[0];
+  const captionUrl = track.baseUrl + '&fmt=json3';
+  
+  // Step 2: Fetch the actual captions
+  const captionResponse = await httpsGet(captionUrl);
+  
+  if (!captionResponse || captionResponse.length === 0) {
+    throw new Error('Failed to fetch caption data');
+  }
+  
+  const captionData = JSON.parse(captionResponse);
+  
+  if (!captionData.events) {
+    throw new Error('Invalid caption data format');
+  }
+  
+  // Parse the transcript
+  const segments = captionData.events
+    .filter(e => e.segs && e.segs.length > 0)
+    .map(e => ({
+      startMs: e.tStartMs || 0,
+      durationMs: e.dDurationMs || 0,
+      text: e.segs.map(s => s.utf8 || '').join('').trim()
+    }))
+    .filter(s => s.text.length > 0);
+  
+  return {
+    segments,
+    language: track.languageCode || 'en',
+    languageName: track.name?.simpleText || 'Unknown'
+  };
+}
+
+// POST /api/transcription/youtube - Get YouTube video transcript
+app.post('/api/transcription/youtube', async (req, res) => {
+  try {
+    const { videoUrl, videoId: providedVideoId } = req.body;
+    
+    // Extract video ID from URL or use provided ID
+    const videoId = providedVideoId || extractYouTubeVideoId(videoUrl);
+    
+    if (!videoId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid YouTube URL or video ID. Please provide a valid YouTube video URL.'
+      });
+    }
+    
+    console.log(`📝 Fetching transcript for video: ${videoId}`);
+    
+    const result = await fetchYouTubeTranscript(videoId);
+    const { segments, language, languageName } = result;
+    
+    // Format transcript with timestamps
+    const formattedLines = segments.map(item => ({
+      timestamp: formatTimestamp(item.startMs),
+      offsetMs: item.startMs,
+      duration: item.durationMs,
+      text: item.text
+    }));
+    
+    // Create plain text version with timestamps
+    const plainText = formattedLines
+      .map(line => `[${line.timestamp}] ${line.text}`)
+      .join('\n');
+    
+    // Create raw text (no timestamps)
+    const rawText = segments.map(item => item.text).join(' ');
+    
+    // Calculate total duration
+    const lastItem = segments[segments.length - 1];
+    const totalDurationMs = lastItem.startMs + lastItem.durationMs;
+    
+    console.log(`✅ Transcript fetched successfully: ${segments.length} segments, language: ${languageName}`);
+    
+    res.json({
+      success: true,
+      data: {
+        videoId,
+        videoUrl: `https://www.youtube.com/watch?v=${videoId}`,
+        language,
+        languageName,
+        totalSegments: segments.length,
+        totalDuration: formatTimestamp(totalDurationMs),
+        totalDurationMs,
+        transcript: formattedLines,
+        plainText,
+        rawText,
+        fetchedAt: new Date().toISOString()
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Error fetching YouTube transcript:', error.message);
+    
+    let errorMessage = error.message;
+    let statusCode = 500;
+    
+    if (error.message.includes('No captions available') || 
+        error.message.includes('Transcript is disabled')) {
+      errorMessage = 'Субтитры недоступны для этого видео. Возможно, автор отключил субтитры или видео приватное.';
+      statusCode = 404;
+    } else if (error.message.includes('Failed to get video info')) {
+      errorMessage = 'Не удалось получить информацию о видео. Проверьте URL.';
+      statusCode = 404;
+    }
+    
+    res.status(statusCode).json({
+      success: false,
+      error: errorMessage
+    });
+  }
+});
+
+// GET /api/transcription/youtube/:videoId - Get transcript by video ID (GET variant)
+app.get('/api/transcription/youtube/:videoId', async (req, res) => {
+  try {
+    const { videoId } = req.params;
+    
+    if (!videoId || videoId.length !== 11) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid video ID. YouTube video IDs are 11 characters long.'
+      });
+    }
+    
+    console.log(`📝 Fetching transcript for video: ${videoId}`);
+    
+    const result = await fetchYouTubeTranscript(videoId);
+    const { segments, language, languageName } = result;
+    
+    const formattedLines = segments.map(item => ({
+      timestamp: formatTimestamp(item.startMs),
+      offsetMs: item.startMs,
+      duration: item.durationMs,
+      text: item.text
+    }));
+    
+    const plainText = formattedLines
+      .map(line => `[${line.timestamp}] ${line.text}`)
+      .join('\n');
+    
+    const rawText = segments.map(item => item.text).join(' ');
+    
+    const lastItem = segments[segments.length - 1];
+    const totalDurationMs = lastItem.startMs + lastItem.durationMs;
+    
+    res.json({
+      success: true,
+      data: {
+        videoId,
+        videoUrl: `https://www.youtube.com/watch?v=${videoId}`,
+        language,
+        languageName,
+        totalSegments: segments.length,
+        totalDuration: formatTimestamp(totalDurationMs),
+        totalDurationMs,
+        transcript: formattedLines,
+        plainText,
+        rawText,
+        fetchedAt: new Date().toISOString()
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Error fetching YouTube transcript:', error.message);
+    
+    let errorMessage = error.message;
+    let statusCode = 500;
+    
+    if (error.message.includes('No captions available') || 
+        error.message.includes('Transcript is disabled')) {
+      errorMessage = 'Субтитры недоступны для этого видео.';
+      statusCode = 404;
+    } else if (error.message.includes('Failed to get video info')) {
+      errorMessage = 'Не удалось получить информацию о видео.';
+      statusCode = 404;
+    }
+    
+    res.status(statusCode).json({
+      success: false,
+      error: errorMessage
+    });
+  }
+});
+
+// POST /api/transcription/process - Full pipeline: YouTube → AI Processing → Save
+app.post('/api/transcription/process', async (req, res) => {
+  try {
+    const { videoUrl, videoId: providedVideoId, videoTitle, saveToFile = true } = req.body;
+    
+    // Check if OpenAI is configured
+    if (!openai) {
+      return res.status(503).json({
+        success: false,
+        error: 'OpenAI API not configured. Please add OPENAI_API_KEY to .env file.'
+      });
+    }
+    
+    const videoId = providedVideoId || extractYouTubeVideoId(videoUrl);
+    
+    if (!videoId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid YouTube URL or video ID.'
+      });
+    }
+    
+    console.log(`\n🚀 Starting full transcription pipeline for: ${videoId}`);
+    console.log(`   Video title: ${videoTitle || 'Unknown'}`);
+    
+    // ========================================
+    // STEP 1: Fetch YouTube Transcript
+    // ========================================
+    console.log(`\n📝 Step 1: Fetching YouTube transcript...`);
+    const startStep1 = Date.now();
+    
+    let transcriptResult;
+    try {
+      transcriptResult = await fetchYouTubeTranscript(videoId);
+    } catch (transcriptError) {
+      return res.status(404).json({
+        success: false,
+        error: `Failed to fetch transcript: ${transcriptError.message}`,
+        step: 'youtube_transcript'
+      });
+    }
+    
+    const { segments, languageName } = transcriptResult;
+    const rawText = segments.map(s => s.text).join(' ');
+    const step1Time = Date.now() - startStep1;
+    
+    console.log(`   ✅ Got ${segments.length} segments (${step1Time}ms)`);
+    console.log(`   Language: ${languageName}`);
+    console.log(`   Raw text length: ${rawText.length} characters`);
+    
+    // ========================================
+    // STEP 2: Load PMT-004 Prompt Template
+    // ========================================
+    console.log(`\n📄 Step 2: Loading PMT-004 prompt template...`);
+    
+    const promptPath = path.join(__dirname, '..', '..', 'ENTITIES', 'PROMPTS', 'PMT-004_Video_Transcription_v4.1.md');
+    
+    if (!fs.existsSync(promptPath)) {
+      return res.status(500).json({
+        success: false,
+        error: 'PMT-004 prompt template not found',
+        step: 'load_prompt'
+      });
+    }
+    
+    const promptTemplate = fs.readFileSync(promptPath, 'utf-8');
+    console.log(`   ✅ Loaded prompt template (${promptTemplate.length} characters)`);
+    
+    // ========================================
+    // STEP 3: Process with OpenAI
+    // ========================================
+    console.log(`\n🤖 Step 3: Processing with OpenAI GPT-4...`);
+    const startStep3 = Date.now();
+    
+    const systemPrompt = `You are a video transcription specialist. Follow the instructions in the provided template exactly.
+Output ONLY the structured markdown document as specified. Do not include any preamble or explanation.`;
+    
+    const userPrompt = `## Video Information
+- Video ID: ${videoId}
+- Video Title: ${videoTitle || 'Unknown'}
+- Video URL: https://www.youtube.com/watch?v=${videoId}
+- Language: ${languageName}
+
+## Raw Transcript
+${rawText}
+
+## Instructions Template
+${promptTemplate}
+
+---
+Now process the raw transcript above following the instructions template. Output the complete structured markdown document.`;
+
+    let aiResponse;
+    try {
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o-mini', // Cost-effective model, ~$0.01-0.02 per video
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        max_tokens: 16000,
+        temperature: 0.3
+      });
+      
+      aiResponse = completion.choices[0]?.message?.content;
+      
+      if (!aiResponse) {
+        throw new Error('Empty response from OpenAI');
+      }
+    } catch (aiError) {
+      console.error('   ❌ OpenAI error:', aiError.message);
+      return res.status(500).json({
+        success: false,
+        error: `AI processing failed: ${aiError.message}`,
+        step: 'ai_processing'
+      });
+    }
+    
+    const step3Time = Date.now() - startStep3;
+    console.log(`   ✅ AI processing complete (${step3Time}ms)`);
+    console.log(`   Output length: ${aiResponse.length} characters`);
+    
+    // ========================================
+    // STEP 4: Save to File (optional)
+    // ========================================
+    let savedFilePath = null;
+    
+    if (saveToFile) {
+      console.log(`\n💾 Step 4: Saving to file...`);
+      
+      // Generate filename
+      const transcriptionsDir = path.join(__dirname, '..', '..', 'ENTITIES', 'TASK_MANAGERS', 'RESEARCHES', '02_TRANSCRIPTIONS');
+      
+      // Ensure directory exists
+      if (!fs.existsSync(transcriptionsDir)) {
+        fs.mkdirSync(transcriptionsDir, { recursive: true });
+      }
+      
+      // Find next video number
+      const existingFiles = fs.readdirSync(transcriptionsDir)
+        .filter(f => f.match(/^Video_\d+\.md$/));
+      
+      const existingNumbers = existingFiles
+        .map(f => parseInt(f.match(/Video_(\d+)/)?.[1] || '0'))
+        .filter(n => !isNaN(n));
+      
+      const nextNumber = existingNumbers.length > 0 
+        ? Math.max(...existingNumbers) + 1 
+        : 1;
+      
+      const fileName = `Video_${String(nextNumber).padStart(3, '0')}.md`;
+      savedFilePath = path.join(transcriptionsDir, fileName);
+      
+      // Add header with metadata
+      const fileContent = `---
+video_id: ${videoId}
+video_title: "${(videoTitle || 'Unknown').replace(/"/g, '\\"')}"
+video_url: https://www.youtube.com/watch?v=${videoId}
+processed_at: ${new Date().toISOString()}
+language: ${languageName}
+---
+
+${aiResponse}`;
+      
+      fs.writeFileSync(savedFilePath, fileContent, 'utf-8');
+      console.log(`   ✅ Saved to: ${savedFilePath}`);
+    }
+    
+    // ========================================
+    // Complete
+    // ========================================
+    const totalTime = Date.now() - startStep1;
+    console.log(`\n✅ Pipeline complete! Total time: ${totalTime}ms`);
+    
+    res.json({
+      success: true,
+      data: {
+        videoId,
+        videoTitle: videoTitle || 'Unknown',
+        videoUrl: `https://www.youtube.com/watch?v=${videoId}`,
+        language: languageName,
+        rawTranscriptLength: rawText.length,
+        processedLength: aiResponse.length,
+        savedFilePath: savedFilePath?.replace(/\\/g, '/'),
+        timing: {
+          transcriptFetch: step1Time,
+          aiProcessing: step3Time,
+          total: totalTime
+        },
+        processedContent: aiResponse
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Pipeline error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// GET /api/transcription/status - Check if AI processing is available
+app.get('/api/transcription/status', (req, res) => {
+  res.json({
+    success: true,
+    data: {
+      youtubeTranscript: true,
+      aiProcessing: !!openai,
+      openAIConfigured: !!process.env.OPENAI_API_KEY
+    }
+  });
+});
+
+// =====================================================
 // START SERVER
 // =====================================================
 
 app.listen(PORT, () => {
   console.log(`🚀 API Server running on http://localhost:${PORT}`);
   console.log(`📊 Database: PostgreSQL (Prisma)`);
+  console.log(`🤖 OpenAI: ${openai ? 'Configured ✅' : 'Not configured ❌'}`);
   console.log(`📁 Endpoints:`);
   console.log(`   GET  /api/search-queue`);
   console.log(`   POST /api/search-queue`);
@@ -1434,6 +1969,10 @@ app.listen(PORT, () => {
   console.log(`   GET  /api/health`);
   console.log(`   GET  /api/prompts`);
   console.log(`   GET  /api/prompts/:promptId`);
+  console.log(`   POST /api/transcription/youtube`);
+  console.log(`   GET  /api/transcription/youtube/:videoId`);
+  console.log(`   POST /api/transcription/process`);
+  console.log(`   GET  /api/transcription/status`);
 });
 
 // Graceful shutdown

@@ -292,3 +292,72 @@ export const promptsAPI = {
   // Get specific prompt by ID (e.g., 'PMT-004', 'PMT-090')
   getById: (promptId: string) => fetchAPI<PromptData>(`/api/prompts/${promptId}`),
 };
+
+// =====================================================
+// TRANSCRIPTION API
+// =====================================================
+
+export interface TranscriptSegment {
+  timestamp: string;
+  offsetMs: number;
+  duration: number;
+  text: string;
+}
+
+export interface TranscriptionData {
+  videoId: string;
+  videoUrl: string;
+  totalSegments: number;
+  totalDuration: string;
+  totalDurationMs: number;
+  transcript: TranscriptSegment[];
+  plainText: string;
+  rawText: string;
+  fetchedAt: string;
+}
+
+export interface ProcessedTranscription {
+  videoId: string;
+  videoTitle: string;
+  videoUrl: string;
+  language: string;
+  rawTranscriptLength: number;
+  processedLength: number;
+  savedFilePath: string | null;
+  timing: {
+    transcriptFetch: number;
+    aiProcessing: number;
+    total: number;
+  };
+  processedContent: string;
+}
+
+export interface TranscriptionStatus {
+  youtubeTranscript: boolean;
+  aiProcessing: boolean;
+  openAIConfigured: boolean;
+}
+
+export const transcriptionAPI = {
+  // Fetch YouTube video transcript
+  fetchYouTube: (videoUrl: string) => fetchAPI<TranscriptionData>('/api/transcription/youtube', {
+    method: 'POST',
+    body: JSON.stringify({ videoUrl }),
+  }),
+
+  // Fetch by video ID directly
+  fetchByVideoId: (videoId: string) => fetchAPI<TranscriptionData>(`/api/transcription/youtube/${videoId}`),
+
+  // Full pipeline: YouTube → AI Processing → Save
+  processWithAI: (data: { 
+    videoUrl: string; 
+    videoTitle?: string; 
+    saveToFile?: boolean 
+  }) => fetchAPI<ProcessedTranscription>('/api/transcription/process', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
+
+  // Check if AI processing is available
+  getStatus: () => fetchAPI<TranscriptionStatus>('/api/transcription/status'),
+};
