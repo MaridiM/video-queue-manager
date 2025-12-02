@@ -331,10 +331,8 @@ interface DropboxSettingsCardProps {
   configured: boolean;
   rootPath: string;
   onSave: (accessToken: string) => Promise<void>;
-  onTest: (accessToken: string) => Promise<boolean>;
+  onTest: (accessToken?: string) => Promise<boolean>;
   onToggle: () => Promise<void>;
-  initialToken?: string;
-  onTokenChange?: (token: string) => void;
 }
 
 function DropboxSettingsCard({
@@ -345,31 +343,14 @@ function DropboxSettingsCard({
   onSave,
   onTest,
   onToggle,
-  initialToken = '',
-  onTokenChange,
 }: DropboxSettingsCardProps) {
   const [showToken, setShowToken] = useState(false);
-  const [token, setToken] = useState(initialToken);
+  const [token, setToken] = useState('');
   const [isEditing, setIsEditing] = useState(!configured);
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<'success' | 'error' | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  // Update token when initialToken changes (from external input)
-  useEffect(() => {
-    if (initialToken) {
-      setToken(initialToken);
-      setIsEditing(true);
-    }
-  }, [initialToken]);
-
-  const handleTokenChange = (newToken: string) => {
-    setToken(newToken);
-    if (onTokenChange) {
-      onTokenChange(newToken);
-    }
-  };
 
   const handleSave = async () => {
     if (!token.trim()) return;
@@ -387,23 +368,26 @@ function DropboxSettingsCard({
   };
 
   const handleTest = async () => {
-    const tokenToTest = token.trim() || (configured ? 'existing' : '');
-    if (!tokenToTest && !configured) return;
-    
     setIsTesting(true);
     setTestResult(null);
     setError(null);
     
     try {
-      const success = await onTest(token.trim() || '');
+      // If editing and has token, test the new token
+      // Otherwise, test saved token (pass undefined to use saved)
+      const tokenToTest = isEditing && token.trim() ? token.trim() : undefined;
+      const success = await onTest(tokenToTest);
       setTestResult(success ? 'success' : 'error');
+      if (success) {
+        setError(null);
+      }
     } catch (e) {
       setTestResult('error');
       setError(e instanceof Error ? e.message : 'Ошибка подключения');
     }
     
     setIsTesting(false);
-    setTimeout(() => setTestResult(null), 3000);
+    setTimeout(() => setTestResult(null), 5000);
   };
 
   return (
@@ -484,7 +468,7 @@ function DropboxSettingsCard({
               <input
                 type={showToken ? 'text' : 'password'}
                 value={token}
-                onChange={(e) => handleTokenChange(e.target.value)}
+                onChange={(e) => setToken(e.target.value)}
                 placeholder="Введите Dropbox Access Token"
                 className="w-full pl-8 sm:pl-10 pr-10 sm:pr-12 py-2.5 sm:py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-xs sm:text-sm"
               />
@@ -561,15 +545,53 @@ function DropboxSettingsCard({
                 )}
               </>
             ) : (
-              <Button
-                variant="outline"
-                onClick={() => setIsEditing(true)}
-                className="flex-1 min-w-[100px] text-xs sm:text-sm py-2 sm:py-2.5"
-              >
-                <RefreshCw size={14} className="mr-1.5 sm:mr-2" />
-                <span className="hidden sm:inline">Изменить токен</span>
-                <span className="sm:hidden">Изменить</span>
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => setIsEditing(true)}
+                  className="flex-1 min-w-[100px] text-xs sm:text-sm py-2 sm:py-2.5"
+                >
+                  <RefreshCw size={14} className="mr-1.5 sm:mr-2" />
+                  <span className="hidden sm:inline">Изменить токен</span>
+                  <span className="sm:hidden">Изменить</span>
+                </Button>
+                
+                <Button
+                  variant="outline"
+                  onClick={handleTest}
+                  disabled={isTesting}
+                  className={`flex-1 min-w-[140px] text-xs sm:text-sm py-2 sm:py-2.5 ${
+                    testResult === 'success' ? 'border-blue-400 text-blue-600' : 
+                    testResult === 'error' ? 'border-red-400 text-red-600' : ''
+                  }`}
+                >
+                  {isTesting ? (
+                    <>
+                      <Loader2 size={14} className="mr-1.5 sm:mr-2 animate-spin" />
+                      <span className="hidden sm:inline">Тестирование...</span>
+                      <span className="sm:hidden">...</span>
+                    </>
+                  ) : testResult === 'success' ? (
+                    <>
+                      <CheckCircle size={14} className="mr-1.5 sm:mr-2" />
+                      <span className="hidden sm:inline">Подключено</span>
+                      <span className="sm:hidden">OK</span>
+                    </>
+                  ) : testResult === 'error' ? (
+                    <>
+                      <X size={14} className="mr-1.5 sm:mr-2" />
+                      <span className="hidden sm:inline">Ошибка</span>
+                      <span className="sm:hidden">✗</span>
+                    </>
+                  ) : (
+                    <>
+                      <Zap size={14} className="mr-1.5 sm:mr-2" />
+                      <span className="hidden sm:inline">Тест подключения</span>
+                      <span className="sm:hidden">Тест</span>
+                    </>
+                  )}
+                </Button>
+              </>
             )}
           </div>
         </div>
@@ -582,9 +604,6 @@ export function Settings() {
   const [activeTab, setActiveTab] = useState('ai');
   const [settings, setSettings] = useState<AISettings | null>(null);
   const [dropboxSettings, setDropboxSettings] = useState<DropboxSettings | null>(null);
-  const [dropboxTokenInput, setDropboxTokenInput] = useState('');
-  const [isSavingToken, setIsSavingToken] = useState(false);
-  const [tokenError, setTokenError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
@@ -698,44 +717,37 @@ export function Settings() {
       throw new Error('Токен должен начинаться с "sl."');
     }
     
-    setIsSavingToken(true);
-    setTokenError(null);
-    
     try {
       const result = await dropboxAPI.update({ accessToken: accessToken.trim(), enabled: true });
       
       if (result.success && result.data) {
         setDropboxSettings(result.data);
         showSaveMessage('Токен Dropbox сохранён');
-        setDropboxTokenInput(''); // Clear input after successful save
-        return true;
       } else {
         throw new Error(result.error || 'Ошибка сохранения');
       }
     } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : 'Ошибка сохранения';
-      setTokenError(errorMessage);
       throw e;
-    } finally {
-      setIsSavingToken(false);
     }
   };
 
-  const handleTestDropbox = async (accessToken: string): Promise<boolean> => {
-    if (!accessToken) {
-      throw new Error('Введите токен доступа для тестирования');
+  const handleTestDropbox = async (accessToken?: string): Promise<boolean> => {
+    // If no token provided, backend will use saved token
+    let tokenToTest = accessToken;
+    
+    // Clean token before testing if provided
+    if (tokenToTest) {
+      tokenToTest = tokenToTest.trim().replace(/^["']|["']$/g, '').trim();
+      
+      if (!tokenToTest.startsWith('sl.')) {
+        throw new Error('Токен должен начинаться с "sl."');
+      }
     }
     
-    // Clean token before testing
-    const cleanedToken = accessToken.trim().replace(/^["']|["']$/g, '').trim();
-    
-    if (!cleanedToken.startsWith('sl.')) {
-      throw new Error('Токен должен начинаться с "sl."');
-    }
-    
-    const result = await dropboxAPI.testConnection(cleanedToken);
+    const result = await dropboxAPI.testConnection(tokenToTest || '');
     
     if (result.success && result.data?.success) {
+      showSaveMessage('Подключение к Dropbox успешно!');
       return true;
     } else {
       throw new Error(result.error || result.data?.message || 'Ошибка подключения');
@@ -934,115 +946,6 @@ export function Settings() {
             </div>
           </div>
 
-          {/* Token Input Block */}
-          <div className="mb-6 sm:mb-8 p-5 sm:p-6 bg-white rounded-xl border-2 border-blue-200 shadow-sm">
-            <div className="flex items-start gap-3 mb-4">
-              <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
-                <Key size={20} className="text-blue-600" />
-              </div>
-              <div className="flex-1">
-                <h3 className="font-semibold text-slate-900 mb-1 text-base sm:text-lg">Вставьте токен доступа Dropbox</h3>
-                <p className="text-sm text-slate-600">
-                  Вставьте токен доступа, полученный из консоли разработчика Dropbox. Токен начинается с <code className="bg-slate-100 px-1.5 py-0.5 rounded text-xs font-mono">sl.</code>
-                </p>
-              </div>
-            </div>
-            
-            <div className="space-y-3">
-              <div className="relative">
-                <Key size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={dropboxTokenInput}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setDropboxTokenInput(value);
-                  }}
-                  onPaste={(e) => {
-                    const pastedToken = e.clipboardData.getData('text').trim();
-                    if (pastedToken && pastedToken.startsWith('sl.')) {
-                      setDropboxTokenInput(pastedToken);
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && dropboxTokenInput.trim().startsWith('sl.')) {
-                      handleSaveDropboxToken(dropboxTokenInput.trim());
-                    }
-                  }}
-                  placeholder="sl.B1234567890abcdefghijklmnopqrstuvwxyz..."
-                  className="w-full pl-10 pr-4 py-3 border-2 border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm placeholder:text-slate-400"
-                />
-              </div>
-              
-              {dropboxTokenInput && !dropboxTokenInput.trim().startsWith('sl.') && (
-                <div className="flex items-center gap-2 text-xs text-amber-600">
-                  <AlertCircle size={14} />
-                  <span>Токен должен начинаться с "sl."</span>
-                </div>
-              )}
-              
-              {tokenError && (
-                <div className="flex items-center gap-2 px-3 py-2 bg-red-50 text-red-700 rounded-lg text-xs sm:text-sm">
-                  <AlertCircle size={14} className="shrink-0" />
-                  <span className="break-words">{tokenError}</span>
-                </div>
-              )}
-              
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  onClick={async () => {
-                    const token = dropboxTokenInput.trim();
-                    if (token && token.startsWith('sl.')) {
-                      try {
-                        await handleSaveDropboxToken(token);
-                      } catch (e) {
-                        // Error already handled in handleSaveDropboxToken
-                      }
-                    }
-                  }}
-                  disabled={!dropboxTokenInput.trim() || !dropboxTokenInput.trim().startsWith('sl.') || isSavingToken}
-                  className="flex-1 sm:flex-initial min-w-[140px]"
-                >
-                  {isSavingToken ? (
-                    <>
-                      <Loader2 size={16} className="mr-2 animate-spin" />
-                      Сохранение...
-                    </>
-                  ) : (
-                    <>
-                      <Check size={16} className="mr-2" />
-                      Сохранить токен
-                    </>
-                  )}
-                </Button>
-                {dropboxTokenInput.trim().startsWith('sl.') && (
-                  <Button
-                    variant="outline"
-                    onClick={async () => {
-                      const token = dropboxTokenInput.trim();
-                      if (token) {
-                        try {
-                          const success = await handleTestDropbox(token);
-                          if (success) {
-                            showSaveMessage('Подключение успешно!');
-                            setTokenError(null);
-                          }
-                        } catch (e) {
-                          setTokenError(e instanceof Error ? e.message : 'Ошибка подключения');
-                        }
-                      }
-                    }}
-                    disabled={isSavingToken}
-                    className="flex-1 sm:flex-initial"
-                  >
-                    <Zap size={16} className="mr-2" />
-                    Тест подключения
-                  </Button>
-                )}
-              </div>
-            </div>
-          </div>
-
           {/* Dropbox Settings Card */}
           {dropboxSettings && (
             <div className="max-w-2xl mb-6 sm:mb-8">
@@ -1051,19 +954,9 @@ export function Settings() {
                 enabled={dropboxSettings.enabled}
                 configured={dropboxSettings.configured}
                 rootPath={dropboxSettings.rootPath}
-                onSave={async (token) => {
-                  await handleSaveDropboxToken(token);
-                  setDropboxTokenInput(''); // Clear input block after save
-                }}
+                onSave={handleSaveDropboxToken}
                 onTest={handleTestDropbox}
                 onToggle={handleToggleDropbox}
-                initialToken={dropboxTokenInput}
-                onTokenChange={(token) => {
-                  // Sync card token back to input block if cleared
-                  if (!token && dropboxTokenInput) {
-                    setDropboxTokenInput('');
-                  }
-                }}
               />
             </div>
           )}

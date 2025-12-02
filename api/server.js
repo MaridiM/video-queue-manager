@@ -2521,10 +2521,16 @@ app.post('/api/settings/dropbox/test', async (req, res) => {
   try {
     let { accessToken } = req.body;
     
+    // If no token provided, use saved token from settings
+    if (!accessToken && aiSettings.dropbox?.accessToken) {
+      accessToken = aiSettings.dropbox.accessToken;
+      console.log('🔍 Using saved Dropbox token for testing');
+    }
+    
     if (!accessToken) {
       return res.status(400).json({ 
         success: false, 
-        error: 'Access token is required' 
+        error: 'Access token is required. Please save a token first or provide one for testing.' 
       });
     }
     

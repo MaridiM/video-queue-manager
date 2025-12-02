@@ -485,9 +485,10 @@ export const dropboxAPI = {
   }),
 
   // Test Dropbox connection
+  // If accessToken is empty string, backend will use saved token
   testConnection: (accessToken: string) => 
     fetchAPI<DropboxTestResult>('/api/settings/dropbox/test', {
       method: 'POST',
-      body: JSON.stringify({ accessToken }),
+      body: JSON.stringify({ accessToken: accessToken || null }),
     }),
 };
