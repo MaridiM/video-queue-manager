@@ -4,6 +4,99 @@
 
 ---
 
+## [1.7.0] - 2025-12-01
+
+### Added - Dropbox Integration Analysis & Implementation Plan
+
+Создан полный анализ возможностей интеграции Dropbox API и план реализации.
+
+#### 📄 Новый документ: `apps/reports/DROPBOX_INTEGRATION.md`
+
+**Содержание:**
+- Анализ текущей архитектуры backend и frontend
+- Чек-лист возможностей интеграции Dropbox API
+- Требования к Dropbox API (scopes, permissions, rate limits)
+- Пошаговый план реализации
+- Структура настроек (разделение AI и Dropbox)
+- Инструкции для разработчиков по настройке Dropbox
+
+#### 🎯 Ключевые выводы анализа:
+
+**Текущее состояние:**
+- ❌ Приложение использует локальные пути к файлам (`fs.readFileSync()`)
+- ❌ Нет интеграции с Dropbox API
+- ❌ Данные хранятся локально, не в облаке Dropbox
+
+**Цель интеграции:**
+- ✅ Полная миграция на Dropbox API
+- ✅ Удаление всех локальных операций с файлами
+- ✅ Все данные хранятся только в Dropbox (cloud)
+- ✅ Настройка токена доступа через Settings
+
+#### 📋 План реализации:
+
+**Phase 1 - Backend:**
+- Установка `dropbox` npm пакета
+- Создание `services/dropboxService.js`
+- Обновление структуры `settings.json` (добавление секции `dropbox`)
+- Замена CSV операций на Dropbox API
+- Новые API endpoints для настроек Dropbox
+
+**Phase 2 - Frontend:**
+- Обновление страницы Settings (разделение AI и Dropbox)
+- Компонент `DropboxSettingsCard` для настройки токена
+- Тестирование подключения к Dropbox
+- Индикатор статуса подключения
+
+**Phase 3 - Миграция:**
+- Реализация dual-mode (Dropbox + fallback на локальные файлы)
+- Постепенная миграция всех операций
+- Удаление кода локальной файловой системы
+
+#### 🔐 Требования к Dropbox Developer Account:
+
+**Шаги настройки:**
+1. Создать Dropbox аккаунт
+2. Создать приложение в Dropbox Developer Console
+3. Выбрать "Full Dropbox" access type
+4. Сгенерировать long-lived access token
+5. Сохранить токен в настройках приложения
+
+**Required Scopes:**
+- `files.content.read` - чтение файлов
+- `files.content.write` - запись файлов
+- `files.metadata.read` - чтение метаданных
+- `files.metadata.write` - запись метаданных
+
+**Файлы для доступа:**
+- `/ENTITIES/TASK_MANAGERS/RESEARCHES/00_SEARCH_QUEUE/Search_Queue_Master.csv`
+- `/ENTITIES/TASK_MANAGERS/RESEARCHES/01_VIDEO_QUEUE/Video_Queue_Master.csv`
+- `/ENTITIES/TASK_MANAGERS/RESEARCHES/02_TRANSCRIPTIONS/Video_XXX.json`
+
+#### 📁 Структура настроек:
+
+```json
+{
+  "ai": { ... },
+  "dropbox": {
+    "accessToken": "",
+    "enabled": false,
+    "rootPath": "/ENTITIES/TASK_MANAGERS/RESEARCHES",
+    "configured": false
+  }
+}
+```
+
+#### 🔄 Новые API Endpoints:
+
+```
+GET  /api/settings/dropbox       - Получить настройки Dropbox
+PUT  /api/settings/dropbox       - Обновить настройки Dropbox
+POST /api/settings/dropbox/test  - Тестировать подключение
+```
+
+---
+
 ## [1.6.0] - 2025-12-01
 
 ### Added - AI Settings Page & Multi-Provider Support
