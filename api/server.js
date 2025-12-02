@@ -48,6 +48,19 @@ function loadSettings() {
       if (saved.openai && !saved.openai.model) {
         saved.openai.model = 'gpt-4o-mini';
       }
+      // Ensure dropbox settings exist (migration for old settings)
+      if (!saved.dropbox) {
+        saved.dropbox = {
+          accessToken: process.env.DROPBOX_ACCESS_TOKEN || '',
+          enabled: !!process.env.DROPBOX_ACCESS_TOKEN,
+          rootPath: '/ENTITIES/TASK_MANAGERS/RESEARCHES',
+          configured: !!process.env.DROPBOX_ACCESS_TOKEN
+        };
+      }
+      // Update configured status based on accessToken
+      if (saved.dropbox) {
+        saved.dropbox.configured = !!saved.dropbox.accessToken;
+      }
       return saved;
     }
   } catch (e) {
@@ -56,7 +69,13 @@ function loadSettings() {
   return {
     openai: { apiKey: process.env.OPENAI_API_KEY || '', enabled: !!process.env.OPENAI_API_KEY, model: 'gpt-4o-mini' },
     google: { apiKey: process.env.GOOGLE_AI_API_KEY || '', enabled: !!process.env.GOOGLE_AI_API_KEY, model: 'gemini-2.0-flash' },
-    defaultProvider: 'google'
+    defaultProvider: 'google',
+    dropbox: {
+      accessToken: process.env.DROPBOX_ACCESS_TOKEN || '',
+      enabled: !!process.env.DROPBOX_ACCESS_TOKEN,
+      rootPath: '/ENTITIES/TASK_MANAGERS/RESEARCHES',
+      configured: !!process.env.DROPBOX_ACCESS_TOKEN
+    }
   };
 }
 
@@ -2406,6 +2425,209 @@ app.post('/api/settings/test', async (req, res) => {
 });
 
 // =====================================================
+// DROPBOX SETTINGS API
+// =====================================================
+
+// GET /api/settings/dropbox - Get Dropbox settings
+app.get('/api/settings/dropbox', (req, res) => {
+  const dropbox = aiSettings.dropbox || {
+    accessToken: '',
+    enabled: false,
+    rootPath: '/ENTITIES/TASK_MANAGERS/RESEARCHES',
+    configured: false
+  };
+  
+  res.json({
+    success: true,
+    data: {
+      accessToken: dropbox.accessToken 
+        ? `...${dropbox.accessToken.slice(-8)}`  // Only show last 8 chars for security
+        : '',
+      enabled: dropbox.enabled,
+      rootPath: dropbox.rootPath,
+      configured: !!dropbox.accessToken
+    }
+  });
+});
+
+// PUT /api/settings/dropbox - Update Dropbox settings
+app.put('/api/settings/dropbox', (req, res) => {
+  try {
+    const { accessToken, enabled, rootPath } = req.body;
+    
+    // Initialize dropbox settings if not exists
+    if (!aiSettings.dropbox) {
+      aiSettings.dropbox = {
+        accessToken: '',
+        enabled: false,
+        rootPath: '/ENTITIES/TASK_MANAGERS/RESEARCHES',
+        configured: false
+      };
+    }
+    
+    // Update settings
+    if (accessToken !== undefined) {
+      // Clean and validate token before saving
+      let cleanedToken = String(accessToken).trim();
+      // Remove any extra quotes or whitespace
+      cleanedToken = cleanedToken.replace(/^["']|["']$/g, '').trim();
+      
+      // Validate token format
+      if (cleanedToken && !cleanedToken.startsWith('sl.')) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Invalid token format. Dropbox access token must start with "sl."' 
+        });
+      }
+      
+      aiSettings.dropbox.accessToken = cleanedToken;
+      aiSettings.dropbox.configured = !!cleanedToken;
+    }
+    if (enabled !== undefined) {
+      aiSettings.dropbox.enabled = enabled;
+    }
+    if (rootPath !== undefined) {
+      aiSettings.dropbox.rootPath = rootPath;
+    }
+    
+    // Save settings to file
+    saveSettings(aiSettings);
+    
+    console.log('✅ Dropbox Settings updated:', {
+      configured: aiSettings.dropbox.configured,
+      enabled: aiSettings.dropbox.enabled,
+      rootPath: aiSettings.dropbox.rootPath
+    });
+    
+    res.json({
+      success: true,
+      data: {
+        accessToken: aiSettings.dropbox.accessToken 
+          ? `...${aiSettings.dropbox.accessToken.slice(-8)}`
+          : '',
+        enabled: aiSettings.dropbox.enabled,
+        rootPath: aiSettings.dropbox.rootPath,
+        configured: !!aiSettings.dropbox.accessToken
+      }
+    });
+  } catch (error) {
+    console.error('Error updating Dropbox settings:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST /api/settings/dropbox/test - Test Dropbox connection
+app.post('/api/settings/dropbox/test', async (req, res) => {
+  try {
+    let { accessToken } = req.body;
+    
+    if (!accessToken) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Access token is required' 
+      });
+    }
+    
+    // Clean and validate token
+    accessToken = String(accessToken).trim();
+    
+    // Remove any extra whitespace, newlines, or quotes
+    accessToken = accessToken.replace(/^["']|["']$/g, '').trim();
+    
+    // Validate token format (should start with 'sl.')
+    if (!accessToken.startsWith('sl.')) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Invalid token format. Dropbox access token must start with "sl."' 
+      });
+    }
+    
+    // Validate minimum length (Dropbox tokens are typically 60+ characters)
+    if (accessToken.length < 20) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Token appears to be too short. Please check your token.' 
+      });
+    }
+    
+    console.log(`🔍 Testing Dropbox connection with token: ${accessToken.substring(0, 10)}...${accessToken.slice(-4)}`);
+    
+    // Test connection by calling Dropbox API to get current account info
+    const response = await fetch('https://api.dropboxapi.com/2/users/get_current_account', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(null)
+    });
+    
+    const responseText = await response.text();
+    
+    if (!response.ok) {
+      let errorMessage = 'Connection failed';
+      try {
+        const errorJson = JSON.parse(responseText);
+        // Dropbox API error format: { error: { ... }, error_summary: "..." }
+        if (errorJson.error_summary) {
+          errorMessage = errorJson.error_summary;
+        } else if (errorJson.error) {
+          if (typeof errorJson.error === 'string') {
+            errorMessage = errorJson.error;
+          } else if (errorJson.error['.tag']) {
+            errorMessage = errorJson.error['.tag'];
+          } else if (errorJson.error.message) {
+            errorMessage = errorJson.error.message;
+          }
+        }
+      } catch (parseError) {
+        // If response is not JSON, use the text as error
+        errorMessage = responseText || errorMessage;
+      }
+      
+      console.error(`❌ Dropbox API error: ${errorMessage}`);
+      
+      return res.status(400).json({ 
+        success: false, 
+        error: `Dropbox API error: ${errorMessage}`,
+        message: errorMessage
+      });
+    }
+    
+    let accountInfo;
+    try {
+      accountInfo = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('Failed to parse Dropbox response:', parseError);
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Invalid response from Dropbox API' 
+      });
+    }
+    
+    console.log(`✅ Dropbox connection successful for account: ${accountInfo.email || 'Unknown'}`);
+    
+    res.json({
+      success: true,
+      data: {
+        success: true,
+        message: 'Connection successful',
+        accountInfo: {
+          name: accountInfo.name?.display_name || accountInfo.name?.given_name || 'Unknown',
+          email: accountInfo.email || 'Unknown'
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Dropbox connection test failed:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: `Connection failed: ${error.message}` 
+    });
+  }
+});
+
+// =====================================================
 // START SERVER
 // =====================================================
 
@@ -2443,6 +2665,10 @@ app.listen(PORT, () => {
   console.log(`   GET  /api/settings`);
   console.log(`   PUT  /api/settings`);
   console.log(`   POST /api/settings/test`);
+  console.log(`   GET  /api/settings/dropbox`);
+  console.log(`   PUT  /api/settings/dropbox`);
+  console.log(`   POST /api/settings/dropbox/test`);
+  console.log(`📦 Dropbox: ${aiSettings.dropbox?.configured ? 'Configured ✅' : 'Not configured ❌'}`);
 });
 
 // Graceful shutdown

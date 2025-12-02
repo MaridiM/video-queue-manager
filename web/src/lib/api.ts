@@ -447,3 +447,47 @@ export const settingsAPI = {
       body: JSON.stringify({ provider, apiKey }),
     }),
 };
+
+// =====================================================
+// DROPBOX SETTINGS API
+// =====================================================
+
+export interface DropboxSettings {
+  accessToken: string;
+  enabled: boolean;
+  rootPath: string;
+  configured: boolean;
+}
+
+export interface DropboxSettingsUpdate {
+  accessToken?: string;
+  enabled?: boolean;
+  rootPath?: string;
+}
+
+export interface DropboxTestResult {
+  success: boolean;
+  message?: string;
+  accountInfo?: {
+    name: string;
+    email: string;
+  };
+}
+
+export const dropboxAPI = {
+  // Get Dropbox settings
+  get: () => fetchAPI<DropboxSettings>('/api/settings/dropbox'),
+
+  // Update Dropbox settings
+  update: (settings: DropboxSettingsUpdate) => fetchAPI<DropboxSettings>('/api/settings/dropbox', {
+    method: 'PUT',
+    body: JSON.stringify(settings),
+  }),
+
+  // Test Dropbox connection
+  testConnection: (accessToken: string) => 
+    fetchAPI<DropboxTestResult>('/api/settings/dropbox/test', {
+      method: 'POST',
+      body: JSON.stringify({ accessToken }),
+    }),
+};
