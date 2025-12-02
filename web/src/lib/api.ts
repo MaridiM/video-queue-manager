@@ -16,7 +16,27 @@ async function fetchAPI<T>(
       ...options,
     });
 
-    const json = await response.json();
+    // Check if response is actually JSON
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      const text = await response.text();
+      return { 
+        success: false, 
+        error: `Invalid response format. Expected JSON, got ${contentType}. Response: ${text.substring(0, 200)}` 
+      };
+    }
+
+    let json;
+    try {
+      json = await response.json();
+    } catch (parseError) {
+      const text = await response.text();
+      console.error('JSON parse error:', parseError);
+      return { 
+        success: false, 
+        error: `Failed to parse JSON response: ${parseError instanceof Error ? parseError.message : 'Unknown error'}. Response preview: ${text.substring(0, 500)}` 
+      };
+    }
 
     if (!response.ok) {
       return { success: false, error: json.error || 'Request failed' };
@@ -321,17 +341,21 @@ export interface ProcessedTranscription {
   videoTitle: string;
   videoUrl: string;
   language: string;
+  totalSegments: number;
   rawTranscriptLength: number;
   processedLength: number;
   savedFilePath: string | null;
   aiProvider?: 'google' | 'openai';
   aiModel?: string;
+  format?: string;
   timing: {
     transcriptFetch: number;
     aiProcessing: number;
+    jsonParsing?: number;
     total: number;
   };
-  processedContent: string;
+  processedContent?: string; // Legacy field (deprecated)
+  transcription?: any; // New JSON format (v2.0)
 }
 
 export interface TranscriptionStatus {
@@ -360,6 +384,7 @@ export const transcriptionAPI = {
     videoTitle?: string; 
     saveToFile?: boolean;
     provider?: 'google' | 'openai';
+    promptId?: 'PMT-004' | 'PMT-010';
   }) => fetchAPI<ProcessedTranscription>('/api/transcription/process', {
     method: 'POST',
     body: JSON.stringify(data),

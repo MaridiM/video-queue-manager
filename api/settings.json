@@ -1,11 +1,13 @@
 {
   "openai": {
     "apiKey": "",
-    "enabled": false
+    "enabled": false,
+    "model": "gpt-4o-mini"
   },
   "google": {
-    "apiKey": "AIzaSyDQqfUYNW-rbGzF6Y0pk0MxSZJ9BLyMJzU",
-    "enabled": true
+    "apiKey": "AIzaSyDDH7ByrT3MHJkuB2oKHVX3M-swnxarlI0",
+    "enabled": true,
+    "model": "gemini-2.0-flash"
   },
   "defaultProvider": "google"
 }

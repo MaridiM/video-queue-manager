@@ -70,6 +70,9 @@ export function VideoDetailView({ video, onBack }: VideoDetailViewProps) {
   const [googleModel, setGoogleModel] = useState('gemini-2.0-flash');
   const [openaiModel, setOpenaiModel] = useState('gpt-4o-mini');
   
+  // Prompt selection state
+  const [selectedPrompt, setSelectedPrompt] = useState<'PMT-004' | 'PMT-010'>('PMT-004');
+  
   // Prompt copy state
   const [promptCopying, setPromptCopying] = useState(false);
   const [promptCopied, setPromptCopied] = useState(false);
@@ -99,13 +102,13 @@ export function VideoDetailView({ video, onBack }: VideoDetailViewProps) {
     setShowTranscriptionModal(true);
   };
   
-  // Copy PMT-004 prompt to clipboard
+  // Copy selected prompt to clipboard
   const handleCopyPrompt = async () => {
     if (promptCopying) return;
     
     setPromptCopying(true);
     try {
-      const result = await promptsAPI.getById('PMT-004');
+      const result = await promptsAPI.getById(selectedPrompt);
       if (result.success && result.data) {
         await navigator.clipboard.writeText(result.data.content);
         setPromptCopied(true);
@@ -125,28 +128,36 @@ export function VideoDetailView({ video, onBack }: VideoDetailViewProps) {
     setAiError(null);
     setAiResult(null);
     
-    // Step 1: Fetching captions
-    setPipelineStep('fetching-captions');
-    setPipelineMessage('Получение субтитров YouTube...');
-    
-    const result = await transcriptionAPI.processWithAI({
-      videoUrl: video.video_url,
-      videoTitle: video.video_title,
-      saveToFile: true,
-      provider: aiProvider
-    });
-    
-    if (result.success && result.data) {
-      setPipelineStep('complete');
-      setPipelineMessage('Обработка завершена!');
-      setAiResult(result.data);
-    } else {
+    try {
+      // Step 1: Fetching captions
+      setPipelineStep('fetching-captions');
+      setPipelineMessage('Получение субтитров YouTube...');
+      
+      const result = await transcriptionAPI.processWithAI({
+        videoUrl: video.video_url,
+        videoTitle: video.video_title,
+        saveToFile: true,
+        provider: aiProvider,
+        promptId: selectedPrompt
+      });
+      
+      if (result.success && result.data) {
+        setPipelineStep('complete');
+        setPipelineMessage('Обработка завершена!');
+        setAiResult(result.data);
+      } else {
+        setPipelineStep('error');
+        setPipelineMessage(result.error || 'Ошибка обработки');
+        setAiError(result.error || 'Ошибка AI обработки');
+      }
+    } catch (error) {
+      console.error('Transcription error:', error);
       setPipelineStep('error');
-      setPipelineMessage(result.error || 'Ошибка обработки');
-      setAiError(result.error || 'Ошибка AI обработки');
+      setPipelineMessage('Неожиданная ошибка');
+      setAiError(error instanceof Error ? error.message : 'Неизвестная ошибка');
+    } finally {
+      setAiProcessing(false);
     }
-    
-    setAiProcessing(false);
   };
   
   const handleCopyUrl = async () => {
@@ -480,36 +491,104 @@ export function VideoDetailView({ video, onBack }: VideoDetailViewProps) {
             </div>
           </div>
 
-          {/* Prompt Badge with Copy Button */}
-          <div className="flex items-center justify-between px-3 py-2 bg-blue-50 rounded-lg border border-blue-100">
-            <div className="flex items-center gap-2">
-              <FileText size={14} className="text-blue-500" />
-              <span className="text-xs text-blue-700 font-medium">Prompt:</span>
-              <span className="text-xs text-blue-600 font-mono">PMT-004_Video_Transcription_v4.1</span>
+          {/* Prompt Selection */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between px-3 py-2 bg-blue-50 rounded-lg border border-blue-100">
+              <div className="flex items-center gap-2">
+                <FileText size={14} className="text-blue-500" />
+                <span className="text-xs text-blue-700 font-medium">Выберите промпт:</span>
+              </div>
+              <button
+                onClick={handleCopyPrompt}
+                disabled={promptCopying}
+                className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-all ${
+                  promptCopied
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                }`}
+              >
+                {promptCopying ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : promptCopied ? (
+                  <>
+                    <Check size={12} />
+                    <span>Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy size={12} />
+                    <span>Copy Prompt</span>
+                  </>
+                )}
+              </button>
             </div>
-            <button
-              onClick={handleCopyPrompt}
-              disabled={promptCopying}
-              className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-all ${
-                promptCopied
-                  ? 'bg-emerald-100 text-emerald-700'
-                  : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-              }`}
-            >
-              {promptCopying ? (
-                <Loader2 size={12} className="animate-spin" />
-              ) : promptCopied ? (
-                <>
-                  <Check size={12} />
-                  <span>Copied!</span>
-                </>
-              ) : (
-                <>
-                  <Copy size={12} />
-                  <span>Copy Prompt</span>
-                </>
-              )}
-            </button>
+            
+            {/* Prompt Selection Buttons */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setSelectedPrompt('PMT-004')}
+                disabled={aiProcessing}
+                className={`px-4 py-3 rounded-lg border-2 transition-all text-left ${
+                  selectedPrompt === 'PMT-004'
+                    ? 'border-blue-500 bg-blue-50 shadow-md'
+                    : 'border-slate-200 bg-white hover:border-slate-300'
+                } ${aiProcessing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+              >
+                <div className="flex items-start gap-2">
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center mt-0.5 ${
+                    selectedPrompt === 'PMT-004'
+                      ? 'border-blue-500 bg-blue-500'
+                      : 'border-slate-300'
+                  }`}>
+                    {selectedPrompt === 'PMT-004' && (
+                      <Check size={12} className="text-white" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-semibold text-sm text-slate-900">PMT-004</p>
+                    <p className="text-xs text-slate-600 mt-0.5">Video Transcription</p>
+                    <p className="text-xs text-slate-500 mt-1">Фокус на TASK_MANAGERS (MLS, TSK, STP)</p>
+                  </div>
+                </div>
+              </button>
+              
+              <button
+                onClick={() => setSelectedPrompt('PMT-010')}
+                disabled={aiProcessing}
+                className={`px-4 py-3 rounded-lg border-2 transition-all text-left ${
+                  selectedPrompt === 'PMT-010'
+                    ? 'border-purple-500 bg-purple-50 shadow-md'
+                    : 'border-slate-200 bg-white hover:border-slate-300'
+                } ${aiProcessing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+              >
+                <div className="flex items-start gap-2">
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center mt-0.5 ${
+                    selectedPrompt === 'PMT-010'
+                      ? 'border-purple-500 bg-purple-500'
+                      : 'border-slate-300'
+                  }`}>
+                    {selectedPrompt === 'PMT-010' && (
+                      <Check size={12} className="text-white" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-semibold text-sm text-slate-900">PMT-010</p>
+                    <p className="text-xs text-slate-600 mt-0.5">Complete Workflow</p>
+                    <p className="text-xs text-slate-500 mt-1">Полный workflow: Research → Processing → Population</p>
+                  </div>
+                </div>
+              </button>
+            </div>
+            
+            {/* Prompt Description */}
+            <div className="px-3 py-2 bg-slate-50 rounded-lg border border-slate-200">
+              <p className="text-xs text-slate-600">
+                <strong className="text-slate-900">{selectedPrompt === 'PMT-004' ? 'PMT-004' : 'PMT-010'}:</strong>{' '}
+                {selectedPrompt === 'PMT-004' 
+                  ? 'Специализированный промпт для транскрипции видео с извлечением TASK_MANAGERS сущностей (Milestones, Tasks, Steps). Оптимизирован для быстрой обработки.'
+                  : 'Комплексный промпт для полного workflow обработки видео: от исследования до интеграции в библиотеки. Включает все этапы процесса.'}
+              </p>
+            </div>
           </div>
           
           {/* Not processed yet */}
@@ -520,7 +599,7 @@ export function VideoDetailView({ video, onBack }: VideoDetailViewProps) {
                   </div>
                   <h3 className="text-lg font-semibold text-slate-900 mb-2">Гибридная обработка</h3>
                   <p className="text-sm text-slate-500 mb-4 max-w-sm mx-auto">
-                    Автоматическое получение субтитров, форматирование через <strong>{aiProvider === 'google' ? googleModel : openaiModel}</strong> по шаблону PMT-004, 
+                    Автоматическое получение субтитров, форматирование через <strong>{aiProvider === 'google' ? googleModel : openaiModel}</strong> по шаблону <strong>{selectedPrompt}</strong>, 
                     и сохранение в файл.
                   </p>
                   
@@ -636,7 +715,8 @@ export function VideoDetailView({ video, onBack }: VideoDetailViewProps) {
                     <div className="flex-1">
                       <p className="font-semibold text-emerald-800">Обработка завершена!</p>
                       <p className="text-sm text-emerald-600">
-                        Время: {(aiResult.timing.total / 1000).toFixed(1)}с • {aiResult.aiProvider === 'google' ? '🌐 Google' : '✨ OpenAI'} {aiResult.aiModel}
+                        Время: {aiResult.timing?.total ? (aiResult.timing.total / 1000).toFixed(1) : '0.0'}с • 
+                        {aiResult.aiProvider === 'google' ? ' 🌐 Google' : ' ✨ OpenAI'} {aiResult.aiModel || 'Unknown'}
                       </p>
                     </div>
                   </div>
@@ -658,10 +738,20 @@ export function VideoDetailView({ video, onBack }: VideoDetailViewProps) {
                       <p className={`text-xs ${aiResult.aiProvider === 'google' ? 'text-cyan-700' : 'text-purple-700'}`}>AI символов</p>
                     </div>
                     <div className="bg-emerald-50 rounded-xl p-3 text-center border border-emerald-100">
-                      <p className="text-xl font-bold text-emerald-600">{(aiResult.timing.aiProcessing / 1000).toFixed(1)}s</p>
+                      <p className="text-xl font-bold text-emerald-600">
+                        {aiResult.timing.aiProcessing ? (aiResult.timing.aiProcessing / 1000).toFixed(1) : '0.0'}s
+                      </p>
                       <p className="text-xs text-emerald-700">AI время</p>
                     </div>
                   </div>
+                  
+                  {/* Format badge */}
+                  {aiResult.format && (
+                    <div className="flex items-center justify-center gap-2 px-3 py-2 bg-indigo-50 rounded-lg border border-indigo-100">
+                      <span className="text-xs text-indigo-700 font-medium">Формат:</span>
+                      <span className="text-xs text-indigo-600 font-mono">{aiResult.format}</span>
+                    </div>
+                  )}
                   
                   {/* Saved file path */}
                   {aiResult.savedFilePath && (
@@ -677,8 +767,35 @@ export function VideoDetailView({ video, onBack }: VideoDetailViewProps) {
                   {/* Result preview */}
                   <div className="bg-slate-900 rounded-xl p-4 max-h-[35vh] overflow-y-auto">
                     <pre className="text-sm text-slate-100 whitespace-pre-wrap font-mono leading-relaxed">
-                      {aiResult.processedContent.substring(0, 3000)}
-                      {aiResult.processedContent.length > 3000 && '\n\n... (показана часть результата)'}
+                      {(() => {
+                        // Support both old format (processedContent) and new format (transcription JSON)
+                        let contentToShow = '';
+                        if (aiResult.processedContent) {
+                          // Legacy format - string content
+                          contentToShow = aiResult.processedContent.substring(0, 3000);
+                        } else if (aiResult.transcription) {
+                          // New format - JSON object
+                          try {
+                            const jsonString = JSON.stringify(aiResult.transcription, null, 2);
+                            contentToShow = jsonString.substring(0, 3000);
+                          } catch (e) {
+                            contentToShow = 'Ошибка форматирования JSON';
+                          }
+                        } else {
+                          contentToShow = 'Нет данных для отображения';
+                        }
+                        
+                        const fullContent = aiResult.processedContent || 
+                          (aiResult.transcription ? JSON.stringify(aiResult.transcription, null, 2) : '');
+                        const isTruncated = fullContent.length > 3000;
+                        
+                        return (
+                          <>
+                            {contentToShow}
+                            {isTruncated && '\n\n... (показана часть результата)'}
+                          </>
+                        );
+                      })()}
                     </pre>
                   </div>
                   
@@ -692,8 +809,15 @@ export function VideoDetailView({ video, onBack }: VideoDetailViewProps) {
                       Закрыть
                     </Button>
                     <Button
-                      onClick={() => {
-                        navigator.clipboard.writeText(aiResult.processedContent);
+                      onClick={async () => {
+                        try {
+                          const contentToCopy = aiResult.processedContent || 
+                            (aiResult.transcription ? JSON.stringify(aiResult.transcription, null, 2) : '');
+                          await navigator.clipboard.writeText(contentToCopy);
+                        } catch (error) {
+                          console.error('Failed to copy:', error);
+                          alert('Ошибка копирования в буфер обмена');
+                        }
                       }}
                       className="flex-1"
                     >

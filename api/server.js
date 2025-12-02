@@ -10,6 +10,8 @@ import https from 'https';
 import { fileURLToPath } from 'url';
 import OpenAI from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { parseAIResponseToJSON } from './utils/transcriptionParser.js';
+import { validateTranscriptionJSON } from './utils/jsonValidator.js';
 
 // =====================================================
 // AI PROVIDERS INITIALIZATION
@@ -1800,8 +1802,35 @@ app.get('/api/transcription/youtube/:videoId', async (req, res) => {
 
 // POST /api/transcription/process - Full pipeline: YouTube → AI Processing → Save
 app.post('/api/transcription/process', async (req, res) => {
+  // Инициализация переменных для избежания ошибок
+  let jsonData = null;
+  let parseTime = 0;
+  let savedFilePath = null;
+  let step1Time = 0;
+  let step3Time = 0;
+  let totalTime = 0;
+  let videoId = null;
+  let videoTitle = null;
+  let languageName = null;
+  let segments = [];
+  let transcriptWithTimestamps = '';
+  let actualProvider = null;
+  let modelUsed = null;
+  let aiResponse = null;
+  
   try {
-    const { videoUrl, videoId: providedVideoId, videoTitle, saveToFile = true, provider: requestedProvider } = req.body;
+    // Проверка импортов
+    if (!parseAIResponseToJSON || !validateTranscriptionJSON) {
+      console.error('❌ Transcription utilities not loaded');
+      return res.status(500).json({
+        success: false,
+        error: 'Transcription utilities not loaded properly. Please restart the server.',
+        step: 'initialization_error'
+      });
+    }
+    const { videoUrl, videoId: providedVideoId, videoTitle: reqVideoTitle, saveToFile = true, provider: requestedProvider, promptId = 'PMT-004' } = req.body;
+    
+    videoTitle = reqVideoTitle;
     
     // Determine which AI provider to use
     const provider = requestedProvider || aiSettings.defaultProvider;
@@ -1827,7 +1856,7 @@ app.post('/api/transcription/process', async (req, res) => {
       }
     }
     
-    const videoId = providedVideoId || extractYouTubeVideoId(videoUrl);
+    videoId = providedVideoId || extractYouTubeVideoId(videoUrl);
     
     if (!videoId) {
       return res.status(400).json({
@@ -1837,7 +1866,7 @@ app.post('/api/transcription/process', async (req, res) => {
     }
     
     // Determine actual provider to use
-    const actualProvider = useGoogle ? 'google' : (useOpenAI ? 'openai' : (googleAI && aiSettings.google.enabled ? 'google' : 'openai'));
+    actualProvider = useGoogle ? 'google' : (useOpenAI ? 'openai' : (googleAI && aiSettings.google.enabled ? 'google' : 'openai'));
     
     console.log(`\n🚀 Starting full transcription pipeline for: ${videoId}`);
     console.log(`   Video title: ${videoTitle || 'Unknown'}`);
@@ -1860,39 +1889,55 @@ app.post('/api/transcription/process', async (req, res) => {
       });
     }
     
-    const { segments, languageName } = transcriptResult;
+    segments = transcriptResult.segments || [];
+    languageName = transcriptResult.languageName || 'en';
     
     // Create transcript WITH timestamps for AI processing
-    const transcriptWithTimestamps = segments.map(s => {
+    transcriptWithTimestamps = segments.map(s => {
       const timestamp = formatTimestamp(s.startMs);
       return `[${timestamp}] ${s.text}`;
     }).join('\n');
     
     // Also keep raw text for reference
     const rawText = segments.map(s => s.text).join(' ');
-    const step1Time = Date.now() - startStep1;
+    step1Time = Date.now() - startStep1;
     
     console.log(`   ✅ Got ${segments.length} segments (${step1Time}ms)`);
     console.log(`   Language: ${languageName}`);
     console.log(`   Transcript with timestamps: ${transcriptWithTimestamps.length} characters`);
     
     // ========================================
-    // STEP 2: Load PMT-004 Prompt Template
+    // STEP 2: Load Prompt Template (PMT-004 or PMT-010)
     // ========================================
-    console.log(`\n📄 Step 2: Loading PMT-004 prompt template...`);
+    console.log(`\n📄 Step 2: Loading prompt template: ${promptId}...`);
     
-    const promptPath = path.join(__dirname, '..', '..', 'ENTITIES', 'PROMPTS', 'PMT-004_Video_Transcription_v4.1.md');
+    // Map prompt IDs to file names
+    const promptFiles = {
+      'PMT-004': 'PMT-004_Video_Transcription_v4.1.md',
+      'PMT-010': 'PMT-010_Complete_Workflow_Full.md'
+    };
+    
+    const promptFileName = promptFiles[promptId.toUpperCase()];
+    if (!promptFileName) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid prompt ID: ${promptId}. Available prompts: PMT-004, PMT-010`,
+        step: 'load_prompt'
+      });
+    }
+    
+    const promptPath = path.join(__dirname, '..', '..', 'ENTITIES', 'PROMPTS', promptFileName);
     
     if (!fs.existsSync(promptPath)) {
       return res.status(500).json({
         success: false,
-        error: 'PMT-004 prompt template not found',
+        error: `Prompt template not found: ${promptFileName}`,
         step: 'load_prompt'
       });
     }
     
     const promptTemplate = fs.readFileSync(promptPath, 'utf-8');
-    console.log(`   ✅ Loaded prompt template (${promptTemplate.length} characters)`);
+    console.log(`   ✅ Loaded prompt template ${promptId} (${promptTemplate.length} characters)`);
     
     // ========================================
     // STEP 3: Process with AI (Google Gemini or OpenAI)
@@ -1900,8 +1945,18 @@ app.post('/api/transcription/process', async (req, res) => {
     console.log(`\n🤖 Step 3: Processing with ${actualProvider === 'google' ? 'Google Gemini' : 'OpenAI GPT-4'}...`);
     const startStep3 = Date.now();
     
-    const systemPrompt = `You are a video transcription specialist. Follow the instructions in the provided template exactly.
-Output ONLY the structured markdown document as specified. Do not include any preamble or explanation.`;
+    const systemPrompt = `You are a video transcription specialist following ${promptId} instructions.
+
+🔴 CRITICAL REQUIREMENTS:
+1. OUTPUT FORMAT: Valid JSON ONLY - NEVER Markdown, NEVER plain text
+2. You MUST output a complete JSON object matching transcription_schema_v2.json structure
+3. All required fields must be present: video_id, video_title, metadata, transcription
+4. Taxonomy analysis should be structured as nested objects/arrays
+5. Use proper JSON syntax: double quotes, correct commas, valid structure
+6. Preserve timestamps in transcription array as "start" and "end" fields (MM:SS format)
+7. Extract TASK_MANAGERS entities: milestones (MLS-###), tasks (TSK-###), steps (STP-###)
+
+Output ONLY valid JSON. No markdown, no explanations, no code blocks.`;
     
     const userPrompt = `## Video Information
 - Video ID: ${videoId}
@@ -1910,20 +1965,62 @@ Output ONLY the structured markdown document as specified. Do not include any pr
 - Language: ${languageName}
 - Total Segments: ${segments.length}
 
-## Transcript with Timestamps
-${transcriptWithTimestamps}
+## Transcript Segments (JSON format)
+${JSON.stringify(segments.map(s => ({
+  start: formatTimestamp(s.startMs),
+  end: formatTimestamp(s.startMs + s.durationMs),
+  text: s.text
+})), null, 2)}
 
-## Instructions Template
+---
+
+## Instructions Template (${promptId})
 ${promptTemplate}
 
 ---
-Now process the transcript above following the instructions template. 
-IMPORTANT: Preserve the timestamps [MM:SS] in the Word-for-Word Transcription section.
-Output the complete structured markdown document.`;
 
-    let aiResponse;
-    let modelUsed;
-    
+## 🔴 CRITICAL PROCESSING INSTRUCTIONS
+
+Process the transcript above and output a complete JSON object matching transcription_schema_v2.json.
+
+**REQUIRED JSON STRUCTURE:**
+{
+  "video_id": "Video_XXX",
+  "video_title": "...",
+  "metadata": {
+    "duration": "MM:SS",
+    "language": "en",
+    "video_url": "...",
+    "extraction_date": "YYYY-MM-DD",
+    "extractor_version": "v4.1",
+    "topics": [...],
+    "tools_referenced": [...]
+  },
+  "transcription": [
+    {
+      "start": "00:00",
+      "end": "00:06",
+      "text": "...",
+      "annotations": []
+    }
+  ],
+  "taxonomy_analysis": {
+    "workflows": [...],
+    "milestones": [...],
+    "tasks": [...],
+    "steps": [...],
+    "action_verbs": {...},
+    "tools_matrix": [...],
+    ...
+  },
+  "processing_status": {
+    "phase_1_transcription": "complete",
+    ...
+  }
+}
+
+**OUTPUT:** Valid JSON object only. No markdown formatting, no code blocks, no explanations.`;
+
     try {
       if (actualProvider === 'google') {
         // ========== GOOGLE GEMINI ==========
@@ -1932,7 +2029,7 @@ Output the complete structured markdown document.`;
           model: googleModel,
           generationConfig: {
             temperature: 0.3,
-            maxOutputTokens: 16000,
+            maxOutputTokens: 32000,
           }
         });
         
@@ -1953,11 +2050,11 @@ Output the complete structured markdown document.`;
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt }
           ],
-          max_tokens: 16000,
+          max_tokens: 32000,
           temperature: 0.3
         });
         
-        aiResponse = completion.choices[0]?.message?.content;
+        aiResponse = completion.choices[0]?.message?.content || '';
         modelUsed = openaiModel;
         
         if (!aiResponse) {
@@ -1979,12 +2076,81 @@ Output the complete structured markdown document.`;
     console.log(`   Model: ${modelUsed}`);
     console.log(`   Output length: ${aiResponse.length} characters`);
     
+    // Проверка что ответ не пустой
+    if (!aiResponse || aiResponse.trim().length === 0) {
+      return res.status(500).json({
+        success: false,
+        error: 'AI returned empty response',
+        step: 'ai_processing',
+        provider: actualProvider
+      });
+    }
+    
+    // ========================================
+    // STEP 3.5: Parse AI Response to JSON Schema v2.0
+    // ========================================
+    console.log(`\n📦 Step 3.5: Parsing AI response to JSON schema v2.0...`);
+    const startParse = Date.now();
+    
+    let jsonData;
+    let parseTime = 0;
+    
+    try {
+      jsonData = parseAIResponseToJSON(
+        aiResponse,
+        videoId,
+        videoTitle,
+        `https://www.youtube.com/watch?v=${videoId}`,
+        languageName,
+        segments
+      );
+      
+      parseTime = Date.now() - startParse;
+      
+      // Проверка что jsonData валидный объект
+      if (!jsonData || typeof jsonData !== 'object') {
+        throw new Error('Parsed JSON is not a valid object');
+      }
+      
+      console.log(`   ✅ JSON parsing complete (${parseTime}ms)`);
+      console.log(`   JSON size: ${JSON.stringify(jsonData).length} characters`);
+      
+      // Валидация JSON (не критично, продолжаем даже при ошибках)
+      try {
+        const validation = validateTranscriptionJSON(jsonData);
+        if (!validation.valid) {
+          console.warn('⚠️ JSON validation warnings:', validation.errors.slice(0, 5));
+          if (validation.errors.length > 5) {
+            console.warn(`   ... and ${validation.errors.length - 5} more errors`);
+          }
+        } else {
+          console.log('   ✅ JSON validated successfully');
+        }
+        
+        if (validation.warning) {
+          console.warn(`   ⚠️ ${validation.warning}`);
+        }
+      } catch (validationError) {
+        console.warn('⚠️ Validation error (non-critical):', validationError.message);
+        // Продолжаем даже если валидация не удалась
+      }
+    } catch (parseError) {
+      parseTime = Date.now() - startParse;
+      console.error('   ❌ Error parsing to JSON:', parseError.message);
+      console.error('   Stack:', parseError.stack);
+      return res.status(500).json({
+        success: false,
+        error: `Failed to parse AI response to JSON: ${parseError.message}`,
+        step: 'json_parsing',
+        aiResponsePreview: aiResponse ? aiResponse.substring(0, 500) : 'No response',
+        stack: process.env.NODE_ENV === 'development' ? parseError.stack : undefined
+      });
+    }
+    
     // ========================================
     // STEP 4: Save to File (optional)
     // ========================================
-    let savedFilePath = null;
-    
-    if (saveToFile) {
+    if (saveToFile && jsonData) {
       console.log(`\n💾 Step 4: Saving to file...`);
       
       // Generate filename
@@ -1995,72 +2161,80 @@ Output the complete structured markdown document.`;
         fs.mkdirSync(transcriptionsDir, { recursive: true });
       }
       
-      // Find next video number
+      // Find next video number (check both .json and .md files)
       const existingFiles = fs.readdirSync(transcriptionsDir)
-        .filter(f => f.match(/^Video_\d+\.md$/));
+        .filter(f => f.match(/^Video_\d+\.(json|md)$/));
       
       const existingNumbers = existingFiles
-        .map(f => parseInt(f.match(/Video_(\d+)/)?.[1] || '0'))
+        .map(f => {
+          const match = f.match(/Video_(\d+)/);
+          return match ? parseInt(match[1]) : 0;
+        })
         .filter(n => !isNaN(n));
       
       const nextNumber = existingNumbers.length > 0 
         ? Math.max(...existingNumbers) + 1 
         : 1;
       
-      const fileName = `Video_${String(nextNumber).padStart(3, '0')}.md`;
+      const fileName = `Video_${String(nextNumber).padStart(3, '0')}.json`;
       savedFilePath = path.join(transcriptionsDir, fileName);
       
-      // Add header with metadata
-      const fileContent = `---
-video_id: ${videoId}
-video_title: "${(videoTitle || 'Unknown').replace(/"/g, '\\"')}"
-video_url: https://www.youtube.com/watch?v=${videoId}
-processed_at: ${new Date().toISOString()}
-language: ${languageName}
-ai_provider: ${actualProvider}
-ai_model: ${modelUsed}
----
-
-${aiResponse}`;
-      
-      fs.writeFileSync(savedFilePath, fileContent, 'utf-8');
+      // Сохранить как JSON с форматированием
+      fs.writeFileSync(savedFilePath, JSON.stringify(jsonData, null, 2), 'utf-8');
       console.log(`   ✅ Saved to: ${savedFilePath}`);
     }
     
     // ========================================
     // Complete
     // ========================================
-    const totalTime = Date.now() - startStep1;
+    totalTime = Date.now() - startStep1;
     console.log(`\n✅ Pipeline complete! Total time: ${totalTime}ms`);
+    
+    // Проверка что jsonData существует
+    if (!jsonData) {
+      throw new Error('JSON data is missing after parsing');
+    }
     
     res.json({
       success: true,
       data: {
-        videoId,
+        videoId: videoId || 'unknown',
         videoTitle: videoTitle || 'Unknown',
-        videoUrl: `https://www.youtube.com/watch?v=${videoId}`,
-        language: languageName,
-        totalSegments: segments.length,
-        rawTranscriptLength: transcriptWithTimestamps.length,
-        processedLength: aiResponse.length,
-        savedFilePath: savedFilePath?.replace(/\\/g, '/'),
-        aiProvider: actualProvider,
-        aiModel: modelUsed,
+        videoUrl: `https://www.youtube.com/watch?v=${videoId || ''}`,
+        language: languageName || 'en',
+        totalSegments: segments.length || 0,
+        rawTranscriptLength: transcriptWithTimestamps ? transcriptWithTimestamps.length : 0,
+        processedLength: JSON.stringify(jsonData).length,
+        savedFilePath: savedFilePath ? savedFilePath.replace(/\\/g, '/') : null,
+        aiProvider: actualProvider || 'unknown',
+        aiModel: modelUsed || 'unknown',
+        format: 'json_v2.0',
         timing: {
-          transcriptFetch: step1Time,
-          aiProcessing: step3Time,
-          total: totalTime
+          transcriptFetch: step1Time || 0,
+          aiProcessing: step3Time || 0,
+          jsonParsing: parseTime || 0,
+          total: totalTime || 0
         },
-        processedContent: aiResponse
+        transcription: jsonData
       }
     });
     
   } catch (error) {
     console.error('❌ Pipeline error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    console.error('Error stack:', error.stack);
+    
+    // Убеждаемся что ответ еще не отправлен
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Unknown error occurred',
+        step: 'pipeline_error',
+        videoId: videoId || null,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      });
+    } else {
+      console.error('⚠️ Response already sent, cannot send error response');
+    }
   }
 });
 
