@@ -615,17 +615,23 @@ export function VideoQueueTable() {
               </div>
               
               {/* Source Path */}
-              <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-                <div className="flex items-start gap-2">
-                  <FolderSync size={16} className="text-gray-400 mt-0.5 shrink-0" />
-                  <div className="min-w-0">
-                    <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-0.5">Source File</div>
-                    <div className="text-xs text-gray-600 font-mono truncate" title={syncResult.csvPath}>
-                      {syncResult.csvPath.split('\\').slice(-3).join(' / ')}
+              {syncResult.csvPath && (
+                <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                  <div className="flex items-start gap-2">
+                    <FolderSync size={16} className="text-gray-400 mt-0.5 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-0.5">
+                        Source: {syncResult.source === 'dropbox' ? 'Dropbox' : 'Local File'}
+                      </div>
+                      <div className="text-xs text-gray-600 font-mono truncate" title={syncResult.csvPath}>
+                        {syncResult.source === 'dropbox' 
+                          ? syncResult.csvPath.split('/').slice(-3).join(' / ')
+                          : syncResult.csvPath.split(/[\\\/]/).slice(-3).join(' / ')}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              )}
               
               {/* Errors if any */}
               {syncResult.errors && syncResult.errors.length > 0 && (

@@ -12,6 +12,7 @@ import OpenAI from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { parseAIResponseToJSON } from './utils/transcriptionParser.js';
 import { validateTranscriptionJSON } from './utils/jsonValidator.js';
+import DropboxService, { getDropboxService } from './services/dropboxService.js';
 
 // =====================================================
 // AI PROVIDERS INITIALIZATION
@@ -38,35 +39,8 @@ const AVAILABLE_MODELS = {
 
 // Load saved settings
 function loadSettings() {
-  try {
-    if (fs.existsSync(settingsFilePath)) {
-      const saved = JSON.parse(fs.readFileSync(settingsFilePath, 'utf-8'));
-      // Ensure model field exists (migration for old settings)
-      if (saved.google && !saved.google.model) {
-        saved.google.model = 'gemini-2.0-flash';
-      }
-      if (saved.openai && !saved.openai.model) {
-        saved.openai.model = 'gpt-4o-mini';
-      }
-      // Ensure dropbox settings exist (migration for old settings)
-      if (!saved.dropbox) {
-        saved.dropbox = {
-          accessToken: process.env.DROPBOX_ACCESS_TOKEN || '',
-          enabled: !!process.env.DROPBOX_ACCESS_TOKEN,
-          rootPath: '/ENTITIES/TASK_MANAGERS/RESEARCHES',
-          configured: !!process.env.DROPBOX_ACCESS_TOKEN
-        };
-      }
-      // Update configured status based on accessToken
-      if (saved.dropbox) {
-        saved.dropbox.configured = !!saved.dropbox.accessToken;
-      }
-      return saved;
-    }
-  } catch (e) {
-    console.error('Error loading settings:', e);
-  }
-  return {
+  // Default settings (from env or empty)
+  const defaults = {
     openai: { apiKey: process.env.OPENAI_API_KEY || '', enabled: !!process.env.OPENAI_API_KEY, model: 'gpt-4o-mini' },
     google: { apiKey: process.env.GOOGLE_AI_API_KEY || '', enabled: !!process.env.GOOGLE_AI_API_KEY, model: 'gemini-2.0-flash' },
     defaultProvider: 'google',
@@ -77,6 +51,46 @@ function loadSettings() {
       configured: !!process.env.DROPBOX_ACCESS_TOKEN
     }
   };
+  
+  try {
+    if (fs.existsSync(settingsFilePath)) {
+      const fileContent = fs.readFileSync(settingsFilePath, 'utf-8').trim();
+      
+      // Check for empty file
+      if (!fileContent) {
+        console.warn('⚠️ settings.json is empty, using defaults');
+        return defaults;
+      }
+      
+      const saved = JSON.parse(fileContent);
+      
+      // Merge with defaults to ensure all fields exist
+      const merged = {
+        openai: { ...defaults.openai, ...(saved.openai || {}) },
+        google: { ...defaults.google, ...(saved.google || {}) },
+        defaultProvider: saved.defaultProvider || defaults.defaultProvider,
+        dropbox: { ...defaults.dropbox, ...(saved.dropbox || {}) }
+      };
+      
+      // Ensure model field exists (migration for old settings)
+      if (!merged.google.model) {
+        merged.google.model = 'gemini-2.0-flash';
+      }
+      if (!merged.openai.model) {
+        merged.openai.model = 'gpt-4o-mini';
+      }
+      
+      // Update configured status based on accessToken
+      merged.dropbox.configured = !!merged.dropbox.accessToken;
+      
+      return merged;
+    }
+  } catch (e) {
+    console.error('❌ Error loading settings:', e.message);
+    console.warn('⚠️ Using default settings from environment variables');
+  }
+  
+  return defaults;
 }
 
 // Save settings to file
@@ -264,43 +278,56 @@ app.post('/api/search-queue', async (req, res) => {
   }
 });
 
-// POST /api/search-queue/sync-csv - Sync from CSV file in Dropbox
+// POST /api/search-queue/sync-csv - Sync from CSV file (Dropbox or local)
 // IMPORTANT: This route MUST be defined BEFORE routes with :id parameter
 app.post('/api/search-queue/sync-csv', async (req, res) => {
   try {
-    // Try multiple possible paths to find the CSV file
-    const possiblePaths = [
+    const dropboxPath = '/ENTITIES/TASK_MANAGERS/RESEARCHES/00_SEARCH_QUEUE/Search_Queue_Master.csv';
+    const localPaths = [
       path.join(__dirname, '..', '..', 'ENTITIES', 'TASK_MANAGERS', 'RESEARCHES', '00_SEARCH_QUEUE', 'Search_Queue_Master.csv'),
-      // From apps/api/ directory
-      // path.resolve(process.cwd(), '../../ENTITIES/TASK_MANAGERS/RESEARCHES/00_SEARCH_QUEUE/Search_Queue_Master.csv'),
-      // // From workspace root
-      // path.resolve(process.cwd(), 'ENTITIES/TASK_MANAGERS/RESEARCHES/00_SEARCH_QUEUE/Search_Queue_Master.csv'),
-      // // From apps/ directory
-      // path.resolve(process.cwd(), '../ENTITIES/TASK_MANAGERS/RESEARCHES/00_SEARCH_QUEUE/Search_Queue_Master.csv'),
     ];
 
+    let csvContent = null;
+    let source = 'unknown';
+    let csvPath = null; // Store the actual path used
     
-    let csvPath = null;
-    for (const p of possiblePaths) {
-      console.log('Checking path:', p);
-      if (fs.existsSync(p)) {
-        csvPath = p;
-        console.log('Found CSV at:', p);
-        break;
+    // Try Dropbox first if enabled
+    const dropboxService = getDropboxService(aiSettings.dropbox);
+    if (dropboxService) {
+      try {
+        console.log('📥 Attempting to download Search Queue CSV from Dropbox...');
+        csvContent = await dropboxService.downloadFile(dropboxPath);
+        source = 'dropbox';
+        csvPath = dropboxPath; // Use Dropbox path
+        console.log('✅ Search Queue CSV loaded from Dropbox');
+      } catch (dropboxError) {
+        console.warn('⚠️ Dropbox download failed, falling back to local file:', dropboxError.message);
       }
     }
     
-    // Check if file exists
-    if (!csvPath) {
-      return res.status(404).json({ 
-        success: false, 
-        error: `CSV file not found. Checked paths: ${possiblePaths.join(', ')}`,
-        cwd: process.cwd()
-      });
+    // Fallback to local file if Dropbox failed or not enabled
+    if (!csvContent) {
+      for (const p of localPaths) {
+        console.log('Checking local path:', p);
+        if (fs.existsSync(p)) {
+          csvPath = p;
+          console.log('Found CSV at:', p);
+          break;
+        }
+      }
+      
+      if (!csvPath) {
+        return res.status(404).json({ 
+          success: false, 
+          error: `CSV file not found. Dropbox: ${dropboxService ? 'enabled but failed' : 'disabled'}. Local paths checked: ${localPaths.join(', ')}`,
+          cwd: process.cwd()
+        });
+      }
+      
+      csvContent = fs.readFileSync(csvPath, 'utf-8');
+      source = 'local';
+      console.log('📁 Search Queue CSV loaded from local file');
     }
-    
-    // Read the CSV file
-    const csvContent = fs.readFileSync(csvPath, 'utf-8');
     const lines = csvContent.trim().split('\n');
     
     if (lines.length < 2) {
@@ -426,8 +453,9 @@ app.post('/api/search-queue/sync-csv', async (req, res) => {
         updated, 
         skipped,
         total: lines.length - 1,
+        source, // 'dropbox' or 'local'
+        csvPath: csvPath || (source === 'dropbox' ? dropboxPath : 'local file'),
         errors: errors.length > 0 ? errors : undefined,
-        csvPath,
       } 
     });
   } catch (error) {
@@ -640,37 +668,56 @@ app.post('/api/video-queue', async (req, res) => {
   }
 });
 
-// POST /api/video-queue/sync-csv - Sync from CSV file in Dropbox
+// POST /api/video-queue/sync-csv - Sync from CSV file (Dropbox or local)
 // IMPORTANT: This route MUST be defined BEFORE routes with :id parameter
 app.post('/api/video-queue/sync-csv', async (req, res) => {
   try {
-    // Try multiple possible paths to find the CSV file
-    const possiblePaths = [
+    const dropboxPath = '/ENTITIES/TASK_MANAGERS/RESEARCHES/01_VIDEO_QUEUE/Video_Queue_Master.csv';
+    const localPaths = [
       path.join(__dirname, '..', '..', 'ENTITIES', 'TASK_MANAGERS', 'RESEARCHES', '01_VIDEO_QUEUE', 'Video_Queue_Master.csv')
-      // path.resolve(process.cwd(), '../../ENTITIES/TASK_MANAGERS/RESEARCHES/01_VIDEO_QUEUE/Video_Queue_Master.csv'),
-      // path.resolve(process.cwd(), 'ENTITIES/TASK_MANAGERS/RESEARCHES/01_VIDEO_QUEUE/Video_Queue_Master.csv'),
-      // path.resolve(process.cwd(), '../ENTITIES/TASK_MANAGERS/RESEARCHES/01_VIDEO_QUEUE/Video_Queue_Master.csv'),
     ];
     
-    let csvPath = null;
-    for (const p of possiblePaths) {
-      console.log('Checking video CSV path:', p);
-      if (fs.existsSync(p)) {
-        csvPath = p;
-        console.log('Found Video CSV at:', p);
-        break;
+    let csvContent = null;
+    let source = 'unknown';
+    let csvPath = null; // Store the actual path used
+    
+    // Try Dropbox first if enabled
+    const dropboxService = getDropboxService(aiSettings.dropbox);
+    if (dropboxService) {
+      try {
+        console.log('📥 Attempting to download Video Queue CSV from Dropbox...');
+        csvContent = await dropboxService.downloadFile(dropboxPath);
+        source = 'dropbox';
+        csvPath = dropboxPath; // Use Dropbox path
+        console.log('✅ Video Queue CSV loaded from Dropbox');
+      } catch (dropboxError) {
+        console.warn('⚠️ Dropbox download failed, falling back to local file:', dropboxError.message);
       }
     }
     
-    if (!csvPath) {
-      return res.status(404).json({ 
-        success: false, 
-        error: `Video CSV file not found. Checked paths: ${possiblePaths.join(', ')}`,
-        cwd: process.cwd()
-      });
+    // Fallback to local file if Dropbox failed or not enabled
+    if (!csvContent) {
+      for (const p of localPaths) {
+        console.log('Checking video CSV path:', p);
+        if (fs.existsSync(p)) {
+          csvPath = p;
+          console.log('Found Video CSV at:', p);
+          break;
+        }
+      }
+      
+      if (!csvPath) {
+        return res.status(404).json({ 
+          success: false, 
+          error: `Video CSV file not found. Dropbox: ${dropboxService ? 'enabled but failed' : 'disabled'}. Local paths checked: ${localPaths.join(', ')}`,
+          cwd: process.cwd()
+        });
+      }
+      
+      csvContent = fs.readFileSync(csvPath, 'utf-8');
+      source = 'local';
+      console.log('📁 Video Queue CSV loaded from local file');
     }
-    
-    const csvContent = fs.readFileSync(csvPath, 'utf-8');
     const lines = csvContent.trim().split('\n');
     
     if (lines.length < 2) {
@@ -825,7 +872,15 @@ app.post('/api/video-queue/sync-csv', async (req, res) => {
     
     res.json({ 
       success: true, 
-      data: { imported, updated, skipped, total: lines.length - 1, errors: errors.length > 0 ? errors : undefined, csvPath } 
+      data: { 
+        imported, 
+        updated, 
+        skipped, 
+        total: lines.length - 1, 
+        source, // 'dropbox' or 'local'
+        csvPath: csvPath || (source === 'dropbox' ? dropboxPath : 'local file'),
+        errors: errors.length > 0 ? errors : undefined 
+      } 
     });
   } catch (error) {
     console.error('Error syncing video queue from CSV:', error);
@@ -1442,18 +1497,49 @@ app.get('/api/prompts/:promptId', async (req, res) => {
       });
     }
     
-    const filePath = path.join(promptsBasePath, fileName);
+    const dropboxPromptPath = `/ENTITIES/PROMPTS/${fileName}`;
+    const localFilePath = path.join(promptsBasePath, fileName);
     
-    // Check if file exists
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({
-        success: false,
-        error: `Prompt file not found: ${fileName}`
-      });
+    let content = null;
+    let source = 'unknown';
+    let lastModified = null;
+    
+    // Try Dropbox first if enabled
+    const dropboxService = getDropboxService(aiSettings.dropbox);
+    if (dropboxService) {
+      try {
+        console.log(`📥 Attempting to download prompt from Dropbox: ${dropboxPromptPath}`);
+        content = await dropboxService.downloadFile(dropboxPromptPath);
+        source = 'dropbox';
+        
+        // Try to get metadata for lastModified
+        try {
+          const metadata = await dropboxService.getMetadata(dropboxPromptPath);
+          if (metadata.client_modified) {
+            lastModified = new Date(metadata.client_modified).toISOString();
+          }
+        } catch (metaError) {
+          // Ignore metadata error, use current time
+          lastModified = new Date().toISOString();
+        }
+      } catch (dropboxError) {
+        console.warn(`⚠️ Dropbox download failed, falling back to local file: ${dropboxError.message}`);
+      }
     }
     
-    // Read file content
-    const content = fs.readFileSync(filePath, 'utf-8');
+    // Fallback to local file if Dropbox failed or not enabled
+    if (!content) {
+      if (!fs.existsSync(localFilePath)) {
+        return res.status(404).json({
+          success: false,
+          error: `Prompt file not found: ${fileName}. Dropbox: ${dropboxService ? 'enabled but failed' : 'disabled'}. Local path: ${localFilePath}`
+        });
+      }
+      
+      content = fs.readFileSync(localFilePath, 'utf-8');
+      source = 'local';
+      lastModified = fs.statSync(localFilePath).mtime.toISOString();
+    }
     
     res.json({
       success: true,
@@ -1461,8 +1547,9 @@ app.get('/api/prompts/:promptId', async (req, res) => {
         promptId: promptId.toUpperCase(),
         fileName,
         content,
-        filePath: filePath.replace(/\\/g, '/'),
-        lastModified: fs.statSync(filePath).mtime.toISOString()
+        source, // 'dropbox' or 'local'
+        filePath: source === 'dropbox' ? dropboxPromptPath : localFilePath.replace(/\\/g, '/'),
+        lastModified: lastModified || new Date().toISOString()
       }
     });
     
@@ -1475,26 +1562,70 @@ app.get('/api/prompts/:promptId', async (req, res) => {
   }
 });
 
-// GET /api/prompts - List all available prompts
+// GET /api/prompts - List all available prompts (Dropbox or Local)
 app.get('/api/prompts', async (req, res) => {
   try {
-    const promptsBasePath = path.join(__dirname, '..', '..', 'ENTITIES', 'PROMPTS');
+    const dropboxPromptsPath = '/ENTITIES/PROMPTS';
+    const localPromptsBasePath = path.join(__dirname, '..', '..', 'ENTITIES', 'PROMPTS');
     
-    // Read all .md files in the PROMPTS directory
-    const files = fs.readdirSync(promptsBasePath)
-      .filter(file => file.endsWith('.md') && file.startsWith('PMT-'))
-      .map(fileName => {
-        const match = fileName.match(/^(PMT-\d+)/);
-        return {
-          promptId: match ? match[1] : fileName,
-          fileName,
-          path: path.join(promptsBasePath, fileName).replace(/\\/g, '/')
-        };
-      });
+    let files = [];
+    let source = 'unknown';
+    
+    // Try Dropbox first if enabled
+    const dropboxService = getDropboxService(aiSettings.dropbox);
+    if (dropboxService) {
+      try {
+        console.log(`📥 Attempting to list prompts from Dropbox: ${dropboxPromptsPath}`);
+        const dropboxFiles = await dropboxService.listFolderAll(dropboxPromptsPath);
+        
+        files = dropboxFiles
+          .filter(file => file.name && file.name.endsWith('.md') && file.name.startsWith('PMT-'))
+          .map(file => {
+            const match = file.name.match(/^(PMT-\d+)/);
+            return {
+              promptId: match ? match[1] : file.name,
+              fileName: file.name,
+              path: `${dropboxPromptsPath}/${file.name}`,
+              source: 'dropbox'
+            };
+          });
+        
+        source = 'dropbox';
+        console.log(`   ✅ Found ${files.length} prompts in Dropbox`);
+      } catch (dropboxError) {
+        console.warn(`⚠️ Dropbox list failed, falling back to local files: ${dropboxError.message}`);
+      }
+    }
+    
+    // Fallback to local file if Dropbox failed or not enabled
+    if (files.length === 0) {
+      if (!fs.existsSync(localPromptsBasePath)) {
+        return res.status(404).json({
+          success: false,
+          error: `Prompts directory not found. Dropbox: ${dropboxService ? 'enabled but failed' : 'disabled'}. Local path: ${localPromptsBasePath}`
+        });
+      }
+      
+      files = fs.readdirSync(localPromptsBasePath)
+        .filter(file => file.endsWith('.md') && file.startsWith('PMT-'))
+        .map(fileName => {
+          const match = fileName.match(/^(PMT-\d+)/);
+          return {
+            promptId: match ? match[1] : fileName,
+            fileName,
+            path: path.join(localPromptsBasePath, fileName).replace(/\\/g, '/'),
+            source: 'local'
+          };
+        });
+      
+      source = 'local';
+      console.log(`   📁 Found ${files.length} prompts in local directory`);
+    }
     
     res.json({
       success: true,
-      data: files
+      data: files,
+      source // 'dropbox' or 'local'
     });
     
   } catch (error) {
@@ -1926,7 +2057,7 @@ app.post('/api/transcription/process', async (req, res) => {
     console.log(`   Transcript with timestamps: ${transcriptWithTimestamps.length} characters`);
     
     // ========================================
-    // STEP 2: Load Prompt Template (PMT-004 or PMT-010)
+    // STEP 2: Load Prompt Template (PMT-004 or PMT-010) - Dropbox or Local
     // ========================================
     console.log(`\n📄 Step 2: Loading prompt template: ${promptId}...`);
     
@@ -1945,18 +2076,41 @@ app.post('/api/transcription/process', async (req, res) => {
       });
     }
     
-    const promptPath = path.join(__dirname, '..', '..', 'ENTITIES', 'PROMPTS', promptFileName);
+    const dropboxPromptPath = `/ENTITIES/PROMPTS/${promptFileName}`;
+    const localPromptPath = path.join(__dirname, '..', '..', 'ENTITIES', 'PROMPTS', promptFileName);
     
-    if (!fs.existsSync(promptPath)) {
-      return res.status(500).json({
-        success: false,
-        error: `Prompt template not found: ${promptFileName}`,
-        step: 'load_prompt'
-      });
+    let promptTemplate = null;
+    let promptSource = 'unknown';
+    
+    // Try Dropbox first if enabled
+    const dropboxService = getDropboxService(aiSettings.dropbox);
+    if (dropboxService) {
+      try {
+        console.log(`   📥 Attempting to download prompt from Dropbox: ${dropboxPromptPath}`);
+        promptTemplate = await dropboxService.downloadFile(dropboxPromptPath);
+        promptSource = 'dropbox';
+        console.log(`   ✅ Prompt loaded from Dropbox (${promptTemplate.length} characters)`);
+      } catch (dropboxError) {
+        console.warn(`   ⚠️ Dropbox download failed, falling back to local file: ${dropboxError.message}`);
+      }
     }
     
-    const promptTemplate = fs.readFileSync(promptPath, 'utf-8');
-    console.log(`   ✅ Loaded prompt template ${promptId} (${promptTemplate.length} characters)`);
+    // Fallback to local file if Dropbox failed or not enabled
+    if (!promptTemplate) {
+      if (!fs.existsSync(localPromptPath)) {
+        return res.status(500).json({
+          success: false,
+          error: `Prompt template not found: ${promptFileName}. Dropbox: ${dropboxService ? 'enabled but failed' : 'disabled'}. Local path: ${localPromptPath}`,
+          step: 'load_prompt'
+        });
+      }
+      
+      promptTemplate = fs.readFileSync(localPromptPath, 'utf-8');
+      promptSource = 'local';
+      console.log(`   📁 Prompt loaded from local file (${promptTemplate.length} characters)`);
+    }
+    
+    console.log(`   ✅ Loaded prompt template ${promptId} from ${promptSource} (${promptTemplate.length} characters)`);
     
     // ========================================
     // STEP 3: Process with AI (Google Gemini or OpenAI)
@@ -2040,53 +2194,187 @@ Process the transcript above and output a complete JSON object matching transcri
 
 **OUTPUT:** Valid JSON object only. No markdown formatting, no code blocks, no explanations.`;
 
-    try {
-      if (actualProvider === 'google') {
-        // ========== GOOGLE GEMINI ==========
-        const googleModel = aiSettings.google.model || 'gemini-2.0-flash';
-        const model = googleAI.getGenerativeModel({ 
-          model: googleModel,
-          generationConfig: {
-            temperature: 0.3,
-            maxOutputTokens: 32000,
+    // Retry logic for rate limit errors
+    const maxRetries = 3;
+    let retryCount = 0;
+    let lastError = null;
+    
+    while (retryCount <= maxRetries) {
+      try {
+        if (actualProvider === 'google') {
+          // ========== GOOGLE GEMINI ==========
+          const googleModel = aiSettings.google.model || 'gemini-2.0-flash';
+          const model = googleAI.getGenerativeModel({ 
+            model: googleModel,
+            generationConfig: {
+              temperature: 0.3,
+              maxOutputTokens: 32000,
+            }
+          });
+          
+          const fullPrompt = `${systemPrompt}\n\n${userPrompt}`;
+          
+          if (retryCount > 0) {
+            const delayMs = Math.min(1000 * Math.pow(2, retryCount - 1), 10000); // Exponential backoff, max 10s
+            console.log(`   ⏳ Retry attempt ${retryCount}/${maxRetries} after ${delayMs}ms delay...`);
+            await new Promise(resolve => setTimeout(resolve, delayMs));
           }
-        });
+          
+          const result = await model.generateContent(fullPrompt);
         
-        const fullPrompt = `${systemPrompt}\n\n${userPrompt}`;
-        const result = await model.generateContent(fullPrompt);
-        aiResponse = result.response.text();
+        // Handle Google AI response - check for text() method or direct access
+        try {
+          if (result.response && typeof result.response.text === 'function') {
+            aiResponse = await result.response.text();
+          } else if (result.response && result.response.text) {
+            aiResponse = result.response.text;
+          } else if (result.response && result.response.candidates && result.response.candidates[0]) {
+            // Alternative response format
+            const candidate = result.response.candidates[0];
+            if (candidate.content && candidate.content.parts && candidate.content.parts[0]) {
+              aiResponse = candidate.content.parts[0].text || '';
+            }
+          } else {
+            // Fallback: try to get text from result directly
+            aiResponse = result.text || result.response?.text || '';
+          }
+        } catch (textError) {
+          console.error('Error extracting text from Google AI response:', textError);
+          // Try alternative method
+          if (result.response?.candidates?.[0]?.content?.parts?.[0]?.text) {
+            aiResponse = result.response.candidates[0].content.parts[0].text;
+          } else {
+            throw new Error(`Failed to extract text from Google AI response: ${textError.message}`);
+          }
+        }
+        
         modelUsed = googleModel;
         
-        if (!aiResponse) {
-          throw new Error('Empty response from Google AI');
+          if (!aiResponse || aiResponse.trim().length === 0) {
+            throw new Error('Empty response from Google AI');
+          }
+          
+          // Success - break out of retry loop
+          break;
+        } else {
+          // ========== OPENAI GPT-4 ==========
+          const openaiModel = aiSettings.openai.model || 'gpt-4o-mini';
+          
+          if (retryCount > 0) {
+            const delayMs = Math.min(1000 * Math.pow(2, retryCount - 1), 10000); // Exponential backoff, max 10s
+            console.log(`   ⏳ Retry attempt ${retryCount}/${maxRetries} after ${delayMs}ms delay...`);
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+          }
+          
+          const completion = await openai.chat.completions.create({
+            model: openaiModel,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt }
+            ],
+            max_tokens: 32000,
+            temperature: 0.3
+          });
+          
+          aiResponse = completion.choices[0]?.message?.content || '';
+          modelUsed = openaiModel;
+          
+          if (!aiResponse) {
+            throw new Error('Empty response from OpenAI');
+          }
+          
+          // Success - break out of retry loop
+          break;
         }
-      } else {
-        // ========== OPENAI GPT-4 ==========
-        const openaiModel = aiSettings.openai.model || 'gpt-4o-mini';
-        const completion = await openai.chat.completions.create({
-          model: openaiModel,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt }
-          ],
-          max_tokens: 32000,
-          temperature: 0.3
-        });
+      } catch (aiError) {
+        lastError = aiError;
+        const errorMessage = aiError.message || '';
         
-        aiResponse = completion.choices[0]?.message?.content || '';
-        modelUsed = openaiModel;
+        // Check if it's a rate limit error and we can retry
+        const isRateLimit = errorMessage.includes('429') || 
+                           errorMessage.includes('Too Many Requests') ||
+                           errorMessage.includes('Resource exhausted') ||
+                           errorMessage.includes('rate limit');
         
-        if (!aiResponse) {
-          throw new Error('Empty response from OpenAI');
+        // Only retry on rate limit errors
+        if (isRateLimit && retryCount < maxRetries) {
+          retryCount++;
+          console.warn(`   ⚠️ Rate limit error, will retry (${retryCount}/${maxRetries})...`);
+          continue; // Retry the request
         }
+        
+        // If not retryable or max retries reached, throw the error
+        throw aiError;
       }
-    } catch (aiError) {
-      console.error(`   ❌ ${actualProvider} error:`, aiError.message);
+    }
+    
+    // If we exhausted retries, handle the error
+    if (lastError && retryCount >= maxRetries) {
+      const errorMessage = lastError.message || '';
+      const isRateLimit = errorMessage.includes('429') || 
+                         errorMessage.includes('Too Many Requests') ||
+                         errorMessage.includes('Resource exhausted') ||
+                         errorMessage.includes('rate limit');
+      
+      if (isRateLimit) {
+        console.error(`   ❌ ${actualProvider} rate limit error after ${maxRetries} retries`);
+        return res.status(429).json({
+          success: false,
+          error: `Rate limit exceeded for ${actualProvider === 'google' ? 'Google AI' : 'OpenAI'}. Please wait a few minutes and try again.`,
+          step: 'ai_processing',
+          provider: actualProvider,
+          errorCode: 'RATE_LIMIT_EXCEEDED',
+          retryAfter: 60, // seconds
+          details: 'The AI service is temporarily unavailable due to too many requests. Please try again in a few minutes.',
+          retriesAttempted: maxRetries
+        });
+      }
+    }
+    
+    // If we get here without setting aiResponse, something went wrong
+    if (!aiResponse) {
       return res.status(500).json({
         success: false,
-        error: `AI processing failed (${actualProvider}): ${aiError.message}`,
+        error: `Failed to get response from ${actualProvider} after ${maxRetries} retries`,
         step: 'ai_processing',
         provider: actualProvider
+      });
+    }
+    
+    // Handle non-retryable errors that were thrown
+    if (lastError && retryCount < maxRetries) {
+      // Error was thrown but wasn't retryable
+      const errorMessage = lastError.message || '';
+      
+      // Check for authentication errors
+      const isAuthError = errorMessage.includes('401') || 
+                         errorMessage.includes('403') ||
+                         errorMessage.includes('authentication') ||
+                         errorMessage.includes('API key') ||
+                         errorMessage.includes('invalid');
+      
+      if (isAuthError) {
+        return res.status(401).json({
+          success: false,
+          error: `Authentication failed for ${actualProvider === 'google' ? 'Google AI' : 'OpenAI'}. Please check your API key in Settings.`,
+          step: 'ai_processing',
+          provider: actualProvider,
+          errorCode: 'AUTHENTICATION_ERROR',
+          details: 'Invalid or expired API key. Please update your API key in Settings.'
+        });
+      }
+      
+      // Generic error
+      console.error(`   ❌ ${actualProvider} error:`, lastError.message);
+      console.error(`   Error details:`, lastError);
+      
+      return res.status(500).json({
+        success: false,
+        error: `AI processing failed (${actualProvider}): ${lastError.message}`,
+        step: 'ai_processing',
+        provider: actualProvider,
+        errorCode: 'AI_PROCESSING_ERROR',
+        details: lastError.message
       });
     }
     
@@ -2167,40 +2455,86 @@ Process the transcript above and output a complete JSON object matching transcri
     }
     
     // ========================================
-    // STEP 4: Save to File (optional)
+    // STEP 4: Save to File (optional) - Dropbox or Local
     // ========================================
+    let saveSource = 'none';
     if (saveToFile && jsonData) {
       console.log(`\n💾 Step 4: Saving to file...`);
       
-      // Generate filename
-      const transcriptionsDir = path.join(__dirname, '..', '..', 'ENTITIES', 'TASK_MANAGERS', 'RESEARCHES', '02_TRANSCRIPTIONS');
+      const dropboxTranscriptionsPath = '/ENTITIES/TASK_MANAGERS/RESEARCHES/02_TRANSCRIPTIONS';
+      const localTranscriptionsDir = path.join(__dirname, '..', '..', 'ENTITIES', 'TASK_MANAGERS', 'RESEARCHES', '02_TRANSCRIPTIONS');
       
-      // Ensure directory exists
-      if (!fs.existsSync(transcriptionsDir)) {
-        fs.mkdirSync(transcriptionsDir, { recursive: true });
+      // Try Dropbox first if enabled
+      const dropboxService = getDropboxService(aiSettings.dropbox);
+      if (dropboxService) {
+        try {
+          console.log('📤 Attempting to save transcription to Dropbox...');
+          
+          // List existing files in Dropbox to find next number
+          let existingFiles = [];
+          try {
+            existingFiles = await dropboxService.listFolder(dropboxTranscriptionsPath);
+          } catch (listError) {
+            console.log('📁 Creating transcriptions folder in Dropbox...');
+            await dropboxService.createFolder(dropboxTranscriptionsPath);
+            existingFiles = [];
+          }
+          
+          const existingNumbers = existingFiles
+            .filter(f => f.name && f.name.match(/^Video_\d+\.(json|md)$/))
+            .map(f => {
+              const match = f.name.match(/Video_(\d+)/);
+              return match ? parseInt(match[1]) : 0;
+            })
+            .filter(n => !isNaN(n));
+          
+          const nextNumber = existingNumbers.length > 0 
+            ? Math.max(...existingNumbers) + 1 
+            : 1;
+          
+          const fileName = `Video_${String(nextNumber).padStart(3, '0')}.json`;
+          const dropboxFilePath = `${dropboxTranscriptionsPath}/${fileName}`;
+          
+          // Upload to Dropbox
+          await dropboxService.uploadFile(dropboxFilePath, JSON.stringify(jsonData, null, 2));
+          savedFilePath = dropboxFilePath;
+          saveSource = 'dropbox';
+          console.log(`   ✅ Saved to Dropbox: ${dropboxFilePath}`);
+        } catch (dropboxError) {
+          console.warn('⚠️ Dropbox upload failed, falling back to local file:', dropboxError.message);
+        }
       }
       
-      // Find next video number (check both .json and .md files)
-      const existingFiles = fs.readdirSync(transcriptionsDir)
-        .filter(f => f.match(/^Video_\d+\.(json|md)$/));
-      
-      const existingNumbers = existingFiles
-        .map(f => {
-          const match = f.match(/Video_(\d+)/);
-          return match ? parseInt(match[1]) : 0;
-        })
-        .filter(n => !isNaN(n));
-      
-      const nextNumber = existingNumbers.length > 0 
-        ? Math.max(...existingNumbers) + 1 
-        : 1;
-      
-      const fileName = `Video_${String(nextNumber).padStart(3, '0')}.json`;
-      savedFilePath = path.join(transcriptionsDir, fileName);
-      
-      // Сохранить как JSON с форматированием
-      fs.writeFileSync(savedFilePath, JSON.stringify(jsonData, null, 2), 'utf-8');
-      console.log(`   ✅ Saved to: ${savedFilePath}`);
+      // Fallback to local file if Dropbox failed or not enabled
+      if (saveSource === 'none') {
+        // Ensure local directory exists
+        if (!fs.existsSync(localTranscriptionsDir)) {
+          fs.mkdirSync(localTranscriptionsDir, { recursive: true });
+        }
+        
+        // Find next video number (check both .json and .md files)
+        const existingFiles = fs.readdirSync(localTranscriptionsDir)
+          .filter(f => f.match(/^Video_\d+\.(json|md)$/));
+        
+        const existingNumbers = existingFiles
+          .map(f => {
+            const match = f.match(/Video_(\d+)/);
+            return match ? parseInt(match[1]) : 0;
+          })
+          .filter(n => !isNaN(n));
+        
+        const nextNumber = existingNumbers.length > 0 
+          ? Math.max(...existingNumbers) + 1 
+          : 1;
+        
+        const fileName = `Video_${String(nextNumber).padStart(3, '0')}.json`;
+        savedFilePath = path.join(localTranscriptionsDir, fileName);
+        
+        // Save to local file
+        fs.writeFileSync(savedFilePath, JSON.stringify(jsonData, null, 2), 'utf-8');
+        saveSource = 'local';
+        console.log(`   ✅ Saved to local: ${savedFilePath}`);
+      }
     }
     
     // ========================================
@@ -2225,6 +2559,7 @@ Process the transcript above and output a complete JSON object matching transcri
         rawTranscriptLength: transcriptWithTimestamps ? transcriptWithTimestamps.length : 0,
         processedLength: JSON.stringify(jsonData).length,
         savedFilePath: savedFilePath ? savedFilePath.replace(/\\/g, '/') : null,
+        saveSource: saveSource || 'none', // 'dropbox', 'local', or 'none'
         aiProvider: actualProvider || 'unknown',
         aiModel: modelUsed || 'unknown',
         format: 'json_v2.0',

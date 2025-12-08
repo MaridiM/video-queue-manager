@@ -4,6 +4,227 @@
 
 ---
 
+## [1.9.3] - 2025-12-02
+
+### Fixed - Google AI Rate Limit Error (429) Handling
+
+Исправлена обработка ошибки 429 (Too Many Requests) от Google AI API с добавлением автоматических повторов.
+
+#### 🐛 Исправления:
+
+**Rate Limit Error Handling (`apps/api/server.js`):**
+- Добавлена специальная обработка ошибки 429 (Too Many Requests)
+- Реализован автоматический retry с экспоненциальной задержкой (до 3 попыток)
+- Улучшены сообщения об ошибках для пользователя
+- Добавлена обработка ошибок аутентификации (401/403)
+
+**Retry Logic:**
+- Автоматические повторы при ошибке 429
+- Экспоненциальная задержка: 1s, 2s, 4s (максимум 10s)
+- Максимум 3 попытки перед возвратом ошибки
+- Логирование каждой попытки повтора
+
+**Улучшенные сообщения об ошибках:**
+- **Rate Limit (429):** Понятное сообщение с рекомендацией подождать
+- **Authentication (401/403):** Указание проверить API ключ в Settings
+- **Generic Errors:** Детальная информация об ошибке
+
+**Пример ответа при ошибке 429:**
+```json
+{
+  "success": false,
+  "error": "Rate limit exceeded for Google AI. Please wait a few minutes and try again.",
+  "step": "ai_processing",
+  "provider": "google",
+  "errorCode": "RATE_LIMIT_EXCEEDED",
+  "retryAfter": 60,
+  "details": "The AI service is temporarily unavailable due to too many requests. Please try again in a few minutes.",
+  "retriesAttempted": 3
+}
+```
+
+**Файлы изменены:**
+- `apps/api/server.js` - добавлена retry логика и улучшена обработка ошибок Google AI
+
+---
+
+## [1.9.2] - 2025-12-02
+
+### Fixed - Google AI Processing Error & Complete Dropbox Integration
+
+Исправлена ошибка при обработке транскрипций через Google AI и завершена миграция всех файловых операций на Dropbox API.
+
+#### 🐛 Исправления:
+
+**Google AI Processing (`apps/api/server.js`):**
+- Исправлена обработка ответа от Google Generative AI
+- Добавлена поддержка различных форматов ответа от Google AI API
+- Улучшена обработка ошибок при извлечении текста из ответа
+- Добавлены fallback методы для получения текста ответа
+
+**Проблема была в:**
+- `result.response.text()` может быть асинхронным или недоступным в некоторых случаях
+- Не все форматы ответа Google AI обрабатывались корректно
+
+**Решение:**
+- Добавлена проверка различных способов получения текста из ответа
+- Поддержка `result.response.text()`, `result.response.text`, `result.response.candidates[0].content.parts[0].text`
+- Улучшена обработка ошибок с детальными сообщениями
+
+#### ✅ Завершена миграция на Dropbox API:
+
+**Промпты (PMT-004, PMT-010):**
+- ✅ `GET /api/prompts/:promptId` - загрузка промпта из Dropbox с fallback на локальный файл
+- ✅ `GET /api/prompts` - список промптов из Dropbox с fallback на локальные файлы
+- ✅ `POST /api/transcription/process` - загрузка промпта из Dropbox перед обработкой
+
+**Пути в Dropbox:**
+- PMT-004: `/ENTITIES/PROMPTS/PMT-004_Video_Transcription_v4.1.md`
+- PMT-010: `/ENTITIES/PROMPTS/PMT-010_Complete_Workflow_Full.md`
+- Все промпты: `/ENTITIES/PROMPTS/`
+
+**Реализация:**
+- Используется `getDropboxService()` для получения экземпляра DropboxService
+- Если Dropbox включён и токен валиден → загрузка из Dropbox
+- Если Dropbox отключён или ошибка → fallback на локальные файлы
+- В ответе API указывается `source: 'dropbox' | 'local'`
+
+#### 📊 Статус интеграции Dropbox:
+
+**Полностью мигрировано:**
+- ✅ CSV синхронизация (Search Queue, Video Queue)
+- ✅ Сохранение транскрипций
+- ✅ Загрузка промптов (PMT-004, PMT-010 и другие)
+
+**Осталось локальным (не критично):**
+- ⚠️ Настройки приложения (`settings.json`) - можно оставить локальным
+
+#### 📝 Анализ:
+
+Создан документ `apps/reports/DROPBOX_INTEGRATION_ANALYSIS.md` с полным анализом:
+- Текущее состояние интеграции
+- Детальный анализ каждой операции
+- Известные проблемы и решения
+- Чек-лист миграции
+
+**Файлы изменены:**
+- `apps/api/server.js` - исправлена обработка Google AI, мигрированы промпты на Dropbox
+- `apps/reports/DROPBOX_INTEGRATION_ANALYSIS.md` - создан анализ интеграции
+
+---
+
+## [1.9.1] - 2025-12-02
+
+### Fixed - Video Queue Sync White Screen & Dropbox Integration Verification
+
+Исправлена проблема с белым экраном при синхронизации Video Queue и улучшена обработка ответов от Dropbox API.
+
+#### 🐛 Исправления:
+
+**Backend (`apps/api/server.js`):**
+- Исправлен ответ API для sync-csv эндпоинтов - теперь всегда возвращается `csvPath`
+- Добавлено поле `source` в ответ для указания источника данных ('dropbox' или 'local')
+- Улучшена обработка путей для Dropbox и локальных файлов
+
+**Frontend (`apps/web/src/components/VideoQueueTable.tsx`, `SearchQueueTable.tsx`):**
+- Исправлена ошибка при отображении результата синхронизации (белый экран)
+- Обновлён интерфейс `SyncCSVResult` для поддержки опциональных полей
+- Добавлена проверка существования `csvPath` перед отображением
+- Улучшено отображение источника данных (Dropbox или Local File)
+
+**API Interface (`apps/web/src/lib/api.ts`):**
+- Обновлён интерфейс `SyncCSVResult`:
+  - `source` - опциональное поле ('dropbox' | 'local')
+  - `csvPath` - опциональное поле (путь к файлу)
+  - `errors` - поддержка как `searchId`, так и `queueId` в ошибках
+
+#### ✅ Проверка интеграции Dropbox:
+
+**Текущее состояние:**
+- ✅ Backend проверяет наличие Dropbox токена и включён ли он
+- ✅ Если Dropbox включён и токен валиден → данные загружаются из Dropbox API
+- ✅ Если Dropbox отключён или ошибка → автоматический fallback на локальные файлы
+- ✅ В ответе API указывается источник данных (`source: 'dropbox' | 'local'`)
+
+**Логирование:**
+- В консоли backend видно, откуда загружаются данные:
+  - `📥 Attempting to download ... from Dropbox...`
+  - `✅ ... loaded from Dropbox` или `📁 ... loaded from local file`
+
+**Файлы изменены:**
+- `apps/api/server.js` - исправлены ответы sync-csv эндпоинтов
+- `apps/web/src/lib/api.ts` - обновлён интерфейс SyncCSVResult
+- `apps/web/src/components/VideoQueueTable.tsx` - исправлена обработка результата синхронизации
+- `apps/web/src/components/SearchQueueTable.tsx` - обновлено отображение источника данных
+
+---
+
+## [1.9.0] - 2025-12-02
+
+### Added - Full Dropbox API Integration
+
+Реализована полная интеграция с Dropbox API для файловых операций. Теперь все данные могут загружаться из облака Dropbox.
+
+#### 🚀 Новые возможности:
+
+**DropboxService Module (`apps/api/services/dropboxService.js`):**
+- Создан отдельный модуль для работы с Dropbox API
+- Поддержка всех основных операций:
+  - `downloadFile()` - загрузка файлов из Dropbox
+  - `uploadFile()` - выгрузка файлов в Dropbox
+  - `listFolder()` / `listFolderAll()` - список файлов в папке
+  - `fileExists()` - проверка существования файла
+  - `getMetadata()` - получение метаданных файла
+  - `createFolder()` - создание папки
+  - `delete()` - удаление файла/папки
+  - `testConnection()` - тест подключения
+- Автоматическая очистка и валидация токена
+- Подробный парсинг ошибок Dropbox API
+- Singleton паттерн для переиспользования экземпляра
+
+**Миграция файловых операций:**
+- `POST /api/search-queue/sync-csv` - загрузка CSV из Dropbox
+- `POST /api/video-queue/sync-csv` - загрузка CSV из Dropbox  
+- `POST /api/transcription/process` - сохранение транскрипций в Dropbox
+
+**Fallback механизм:**
+- Если Dropbox недоступен или отключён, используются локальные файлы
+- Автоматическое переключение при ошибках Dropbox API
+- В ответе API указывается источник данных (`source: 'dropbox' | 'local'`)
+
+#### 📦 Установленные зависимости:
+
+```bash
+npm install dropbox
+```
+
+#### 🔧 Технические детали:
+
+**Пути к файлам в Dropbox:**
+- Search Queue CSV: `/ENTITIES/TASK_MANAGERS/RESEARCHES/00_SEARCH_QUEUE/Search_Queue_Master.csv`
+- Video Queue CSV: `/ENTITIES/TASK_MANAGERS/RESEARCHES/01_VIDEO_QUEUE/Video_Queue_Master.csv`
+- Транскрипции: `/ENTITIES/TASK_MANAGERS/RESEARCHES/02_TRANSCRIPTIONS/Video_XXX.json`
+
+**Файлы изменены:**
+- `apps/api/package.json` - добавлен пакет `dropbox`
+- `apps/api/services/dropboxService.js` - новый модуль (создан)
+- `apps/api/server.js` - интеграция DropboxService во все файловые операции
+
+#### 📝 Как использовать:
+
+1. Настройте Dropbox токен в UI (Settings → Dropbox)
+2. Включите интеграцию (переключатель "Enabled")
+3. Нажмите "Тест подключения" для проверки
+4. Все операции синхронизации теперь используют Dropbox API
+
+#### ⚠️ Важно:
+
+- Токен должен иметь права на чтение/запись файлов
+- При ошибках Dropbox автоматически используются локальные файлы
+- Логи показывают источник данных (Dropbox или локальный)
+
+---
+
 ## [1.8.2] - 2025-12-02
 
 ### Changed - Dropbox Settings UI Improvements

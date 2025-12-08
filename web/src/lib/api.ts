@@ -80,8 +80,9 @@ export interface SyncCSVResult {
   updated: number;
   skipped: number;
   total: number;
-  errors?: { searchId: string; error: string }[];
-  csvPath: string;
+  source?: 'dropbox' | 'local'; // Source of the CSV file
+  csvPath?: string; // Path to the CSV file (Dropbox path or local path)
+  errors?: { searchId?: string; queueId?: string; error: string }[];
 }
 
 export const searchQueueAPI = {

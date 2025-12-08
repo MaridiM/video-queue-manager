@@ -1,3 +1,6 @@
 node_modules
 .env
 /generated/prisma
+
+# Settings with API keys and tokens
+settings.json
