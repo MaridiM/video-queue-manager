@@ -11,12 +11,15 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
       <input
         ref={ref}
         className={cn(
-          'flex h-10 w-full rounded-md border bg-white px-3 py-2 text-sm text-slate-900',
-          'placeholder:text-slate-400',
-          'focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500',
-          'disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-slate-50',
-          'transition-colors',
-          error ? 'border-red-500 focus:ring-red-500/20 focus:border-red-500' : 'border-slate-200',
+          'flex h-10 w-full rounded-[8px] border bg-[var(--background-paper)] px-4 py-2 text-base text-[var(--text-primary)]',
+          'placeholder:text-[var(--text-secondary)] placeholder:opacity-100',
+          'transition-all duration-300 ease-in-out',
+          'hover:border-[var(--border-hover)]',
+          'focus:outline-none focus:border-[var(--border-focus)] focus:shadow-[0_0_0_3px_rgba(37,99,235,0.1)]',
+          'disabled:cursor-not-allowed disabled:bg-[var(--background-disabled)] disabled:text-[var(--text-disabled)] disabled:border-[var(--border-disabled)]',
+          error 
+            ? 'border-[var(--border-error)] focus:border-[var(--border-error)] focus:shadow-[0_0_0_3px_rgba(220,38,38,0.1)]' 
+            : 'border-[var(--border-default)]',
           className
         )}
         {...props}

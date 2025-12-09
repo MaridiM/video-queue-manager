@@ -4,34 +4,35 @@ interface StatusBadgeProps {
   status: VideoStatus | string;
 }
 
+// Game Academy Design System Status Badge Styles
 const statusStyles: Record<string, string> = {
-  Pending: 'bg-gray-100 text-gray-700 border-gray-200',
-  pending: 'bg-gray-100 text-gray-700 border-gray-200',
-  Selected: 'bg-blue-100 text-blue-700 border-blue-200',
-  selected: 'bg-blue-100 text-blue-700 border-blue-200',
-  Parsing: 'bg-slate-100 text-slate-700 border-slate-200',
-  parsing: 'bg-slate-100 text-slate-700 border-slate-200',
-  Parsed: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-  parsed: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-  Transcribing: 'bg-purple-100 text-purple-700 border-purple-200',
-  transcribing: 'bg-purple-100 text-purple-700 border-purple-200',
-  Transcribed: 'bg-indigo-100 text-indigo-700 border-indigo-200',
-  transcribed: 'bg-indigo-100 text-indigo-700 border-indigo-200',
-  Processing: 'bg-orange-100 text-orange-700 border-orange-200',
-  processing: 'bg-orange-100 text-orange-700 border-orange-200',
-  Integration: 'bg-sky-100 text-sky-700 border-sky-200',
-  integration: 'bg-sky-100 text-sky-700 border-sky-200',
-  Complete: 'bg-green-100 text-green-700 border-green-200',
-  complete: 'bg-green-100 text-green-700 border-green-200',
-  Rejected: 'bg-red-100 text-red-700 border-red-200',
-  rejected: 'bg-red-100 text-red-700 border-red-200',
+  Pending: 'bg-[var(--secondary-100)] text-[var(--secondary-600)] border-[var(--border-default)]',
+  pending: 'bg-[var(--secondary-100)] text-[var(--secondary-600)] border-[var(--border-default)]',
+  Selected: 'bg-[var(--primary-100)] text-[var(--primary-600)] border-[var(--primary-400)]',
+  selected: 'bg-[var(--primary-100)] text-[var(--primary-600)] border-[var(--primary-400)]',
+  Parsing: 'bg-[var(--secondary-100)] text-[var(--secondary-700)] border-[var(--border-default)]',
+  parsing: 'bg-[var(--secondary-100)] text-[var(--secondary-700)] border-[var(--border-default)]',
+  Parsed: 'bg-[var(--success-light)] text-[var(--success)] border-[var(--success)]',
+  parsed: 'bg-[var(--success-light)] text-[var(--success)] border-[var(--success)]',
+  Transcribing: 'bg-[rgba(109,40,217,0.15)] text-[#6D28D9] border-[#6D28D9]',
+  transcribing: 'bg-[rgba(109,40,217,0.15)] text-[#6D28D9] border-[#6D28D9]',
+  Transcribed: 'bg-[var(--info-light)] text-[var(--info)] border-[var(--info)]',
+  transcribed: 'bg-[var(--info-light)] text-[var(--info)] border-[var(--info)]',
+  Processing: 'bg-[var(--warning-light)] text-[var(--warning)] border-[var(--warning)]',
+  processing: 'bg-[var(--warning-light)] text-[var(--warning)] border-[var(--warning)]',
+  Integration: 'bg-[var(--info-light)] text-[var(--info)] border-[var(--info)]',
+  integration: 'bg-[var(--info-light)] text-[var(--info)] border-[var(--info)]',
+  Complete: 'bg-[var(--success-light)] text-[var(--success)] border-[var(--success)]',
+  complete: 'bg-[var(--success-light)] text-[var(--success)] border-[var(--success)]',
+  Rejected: 'bg-[var(--error-light)] text-[var(--error)] border-[var(--error)]',
+  rejected: 'bg-[var(--error-light)] text-[var(--error)] border-[var(--error)]',
 };
 
 export function StatusBadge({ status }: StatusBadgeProps) {
-  const style = statusStyles[status] || 'bg-gray-100 text-gray-700 border-gray-200';
+  const style = statusStyles[status] || 'bg-[var(--secondary-100)] text-[var(--secondary-600)] border-[var(--border-default)]';
   const displayStatus = status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${style}`}>
+    <span className={`inline-flex items-center gap-[4px] px-3 py-1 rounded-full text-xs font-medium border transition-all duration-200 ${style}`}>
       {displayStatus}
     </span>
   );
@@ -42,23 +43,65 @@ interface PriorityBadgeProps {
   score?: number;
 }
 
-const priorityStyles: Record<string, string> = {
-  high: 'text-red-600 font-bold',
-  medium: 'text-yellow-600 font-medium',
-  low: 'text-gray-500',
+// Game Academy Design System Priority Badge Styles
+const priorityStyles: Record<string, { bg: string; text: string; border: string }> = {
+  high: {
+    bg: 'rgba(234, 88, 12, 0.15)',
+    text: '#ea580c',
+    border: '#ea580c',
+  },
+  medium: {
+    bg: 'rgba(245, 158, 11, 0.15)',
+    text: '#f59e0b',
+    border: '#f59e0b',
+  },
+  low: {
+    bg: 'rgba(132, 204, 22, 0.15)',
+    text: '#84cc16',
+    border: '#84cc16',
+  },
 };
 
 export function PriorityBadge({ priority, score }: PriorityBadgeProps) {
-  const style = priorityStyles[priority] || 'text-gray-500';
+  const style = priorityStyles[priority] || {
+    bg: 'rgba(132, 204, 22, 0.15)',
+    text: '#84cc16',
+    border: '#84cc16',
+  };
+  
+  // Determine priority level based on score if provided
+  let displayPriority = priority;
   if (score !== undefined) {
+    if (score >= 80) displayPriority = 'critical';
+    else if (score >= 60) displayPriority = 'high';
+    else if (score >= 40) displayPriority = 'medium';
+    else if (score >= 20) displayPriority = 'low';
+    else displayPriority = 'veryLow';
+    
+    const scoreStyle = priorityStyles[displayPriority] || style;
     return (
-      <span className={`text-xs uppercase tracking-wider ${style}`}>
+      <span 
+        className="inline-flex items-center gap-[4px] px-3 py-1 rounded-full text-xs font-medium border transition-all duration-200"
+        style={{
+          backgroundColor: scoreStyle.bg,
+          color: scoreStyle.text,
+          borderColor: scoreStyle.border,
+        }}
+      >
         {score}/100
       </span>
     );
   }
+  
   return (
-    <span className={`text-xs uppercase tracking-wider ${style}`}>
+    <span 
+      className="inline-flex items-center gap-[4px] px-3 py-1 rounded-full text-xs font-medium border transition-all duration-200"
+      style={{
+        backgroundColor: style.bg,
+        color: style.text,
+        borderColor: style.border,
+      }}
+    >
       {priority}
     </span>
   );
@@ -68,19 +111,55 @@ interface DepartmentBadgeProps {
   department: string;
 }
 
-const departmentStyles: Record<string, string> = {
-  DEV: 'bg-blue-100 text-blue-700 border-blue-200',
-  SMM: 'bg-pink-100 text-pink-700 border-pink-200',
-  VID: 'bg-red-100 text-red-700 border-red-200',
-  AID: 'bg-purple-100 text-purple-700 border-purple-200',
-  DGN: 'bg-teal-100 text-teal-700 border-teal-200',
-  MKT: 'bg-amber-100 text-amber-700 border-amber-200',
+// Game Academy Design System Department Badge Styles
+const departmentStyles: Record<string, { bg: string; text: string; border: string }> = {
+  DEV: {
+    bg: 'rgba(20, 120, 87, 0.15)',
+    text: '#147857',
+    border: '#147857',
+  },
+  SMM: {
+    bg: 'rgba(75, 85, 99, 0.15)',
+    text: '#4B5563',
+    border: '#4B5563',
+  },
+  VID: {
+    bg: 'rgba(249, 115, 22, 0.15)',
+    text: '#F97316',
+    border: '#F97316',
+  },
+  AID: {
+    bg: 'rgba(75, 85, 99, 0.15)',
+    text: '#4B5563',
+    border: '#4B5563',
+  },
+  DGN: {
+    bg: 'rgba(109, 40, 217, 0.15)',
+    text: '#6D28D9',
+    border: '#6D28D9',
+  },
+  MKT: {
+    bg: 'rgba(236, 72, 153, 0.15)',
+    text: '#EC4899',
+    border: '#EC4899',
+  },
 };
 
 export function DepartmentBadge({ department }: DepartmentBadgeProps) {
-  const style = departmentStyles[department] || 'bg-slate-100 text-slate-700 border-slate-200';
+  const style = departmentStyles[department] || {
+    bg: 'rgba(75, 85, 99, 0.15)',
+    text: '#4B5563',
+    border: '#4B5563',
+  };
   return (
-    <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-semibold border ${style}`}>
+    <span 
+      className="inline-flex items-center gap-[4px] px-3 py-1 rounded-full text-xs font-medium border transition-all duration-200"
+      style={{
+        backgroundColor: style.bg,
+        color: style.text,
+        borderColor: style.border,
+      }}
+    >
       {department}
     </span>
   );

@@ -4,11 +4,118 @@
 
 ---
 
+## [1.11.0] - 2025-12-02
+
+### Added - Game Academy Design System Integration
+
+Применена полная дизайн-система Game Academy ко всему приложению.
+
+#### 🎨 Дизайн-система:
+
+**Цветовая палитра (`apps/web/src/styles/index.css`):**
+- Обновлены CSS переменные согласно Game Academy Design System
+- Primary цвета: #2563EB с полной палитрой от 50 до 900
+- Secondary/Neutral цвета для текста и фона
+- Semantic цвета: success, warning, error, info
+- Department цвета: designers (#6D28D9), developers (#147857), managers (#DC2626), marketers (#EC4899), videographers (#F97316)
+- Priority цвета с градациями от critical до veryLow
+
+**Типографика:**
+- Шрифт изменен с Inter на Roboto
+- Добавлен Google Fonts импорт для Roboto (300, 400, 500, 600, 700)
+- Обновлены стили заголовков (h1-h5) согласно дизайн-системе
+- Line heights и letter spacing соответствуют спецификации
+
+**Компоненты UI:**
+
+**Button (`apps/web/src/components/ui/Button.tsx`):**
+- Обновлены все варианты: primary, secondary, outline, ghost, destructive
+- Добавлены hover эффекты с translateY(-1px) и увеличенной тенью
+- Border radius: 8px (соответствует дизайн-системе)
+- Transitions: 300ms ease-in-out
+- Focus states с ring эффектом
+
+**Card (`apps/web/src/components/ui/Card.tsx`):**
+- Border radius: 12px
+- Shadow: 0 2px 8px rgba(0,0,0,0.10)
+- Hover эффект: translateY(-2px) с увеличенной тенью
+- Использует CSS переменные для цветов
+
+**StatusBadge (`apps/web/src/components/ui/StatusBadge.tsx`):**
+- Обновлены цвета для всех статусов согласно дизайн-системе
+- Department badges используют правильные цвета из палитры
+- Priority badges с градациями на основе score (0-100)
+- Border radius: 9999px (full)
+
+**Input (`apps/web/src/components/ui/Input.tsx`):**
+- Border radius: 8px
+- Focus state с shadow: 0 0 0 3px rgba(37,99,235,0.1)
+- Hover state с изменением border цвета
+- Использует CSS переменные для всех цветов
+
+**Select (`apps/web/src/components/ui/Select.tsx`):**
+- Обновлен dropdown arrow icon
+- Стили соответствуют Input компоненту
+- Правильные focus и hover states
+
+**Textarea (`apps/web/src/components/ui/Textarea.tsx`):**
+- Min height: 120px
+- Resize: vertical
+- Стили соответствуют Input компоненту
+
+**Dialog (`apps/web/src/components/ui/Dialog.tsx`):**
+- Backdrop: rgba(0,0,0,0.6) с blur(4px)
+- Border radius: 12px
+- Shadow: 0 10px 30px rgba(0,0,0,0.15)
+- Анимация: slideUp + fadeIn (300ms)
+- Header и Footer с правильными отступами и границами
+
+**Layout (`apps/web/src/App.tsx`):**
+- Sidebar обновлен: белый фон вместо темного
+- Активные элементы: rgba(37,99,235,0.15) background
+- Hover states с правильными цветами
+- Header с правильными z-index и shadow
+- Max width контента: 1280px
+
+**Анимации (`apps/web/src/styles/index.css`):**
+- Добавлены все keyframes из дизайн-системы:
+  - fadeIn, fadeOut
+  - slideUp, slideDown
+  - slideInRight, slideInLeft
+  - scaleIn, scaleOut
+  - spin, pulse, fluidWave
+- Transitions: fast (150ms), normal (300ms), slow (500ms)
+- Поддержка prefers-reduced-motion
+
+**Accessibility:**
+- Focus-visible стили с outline и border-radius
+- Правильные z-index значения (dropdown: 1000, modal: 1050, tooltip: 1070)
+- Semantic HTML структура
+
+**Файлы изменены:**
+- `apps/web/index.html` - добавлен Roboto шрифт
+- `apps/web/src/styles/index.css` - полное обновление CSS переменных и анимаций
+- `apps/web/src/lib/designSystem.ts` - новый файл с конфигурацией дизайн-системы
+- `apps/web/src/components/ui/Button.tsx` - обновлены стили
+- `apps/web/src/components/ui/Card.tsx` - обновлены стили
+- `apps/web/src/components/ui/StatusBadge.tsx` - обновлены цвета и стили
+- `apps/web/src/components/ui/Input.tsx` - обновлены стили
+- `apps/web/src/components/ui/Select.tsx` - обновлены стили
+- `apps/web/src/components/ui/Textarea.tsx` - обновлены стили
+- `apps/web/src/components/ui/Dialog.tsx` - обновлены стили
+- `apps/web/src/App.tsx` - обновлен layout и sidebar
+
+**Reference:**
+- Video Catalog: https://adminrhs.github.io/Video-catalog/
+- Design System: https://adminrhs.github.io/Design-system/
+
+---
+
 ## [1.10.0] - 2025-12-02
 
-### Added - New Video Catalog UI
+### Added - New Video Catalog UI (Отменено)
 
-Полностью переделан интерфейс Video Queue в стиле современного видео-каталога.
+Полностью переделан интерфейс Video Queue в стиле современного видео-каталога (изменения отменены).
 
 #### 🎨 Новый дизайн:
 

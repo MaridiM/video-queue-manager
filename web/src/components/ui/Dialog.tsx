@@ -32,17 +32,19 @@ export function Dialog({ open, onOpenChange, children }: DialogProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50">
-      {/* Backdrop */}
+    <div className="fixed inset-0 z-[1050]">
+      {/* Backdrop - Game Academy Design System */}
       <div 
-        className="fixed inset-0 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
+        className="fixed inset-0 bg-black/60 backdrop-blur-[4px] fade-in"
+        style={{ animationDuration: '150ms', animationTimingFunction: 'ease-in-out' }}
         onClick={() => onOpenChange(false)}
       />
       {/* Dialog */}
       <div className="fixed inset-0 flex items-center justify-center p-4">
         <div 
           ref={dialogRef}
-          className="relative bg-white border border-slate-200 rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-auto animate-in zoom-in-95 duration-200"
+          className="relative bg-[var(--background-paper)] border border-[var(--border-default)] rounded-[12px] shadow-[0_10px_30px_rgba(0,0,0,0.15)] w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col scale-in"
+          style={{ animationDuration: '300ms', animationTimingFunction: 'ease-out' }}
           onClick={(e) => e.stopPropagation()}
         >
           {children}
@@ -58,7 +60,7 @@ interface DialogContentProps {
 }
 
 export function DialogContent({ children, className = '' }: DialogContentProps) {
-  return <div className={`p-6 ${className}`}>{children}</div>;
+  return <div className={`p-6 overflow-y-auto max-h-[calc(90vh-150px)] ${className}`}>{children}</div>;
 }
 
 interface DialogHeaderProps {
@@ -66,7 +68,11 @@ interface DialogHeaderProps {
 }
 
 export function DialogHeader({ children }: DialogHeaderProps) {
-  return <div className="mb-4">{children}</div>;
+  return (
+    <div className="flex items-center justify-between p-6 border-b border-[var(--border-default)]">
+      {children}
+    </div>
+  );
 }
 
 interface DialogTitleProps {
@@ -74,7 +80,7 @@ interface DialogTitleProps {
 }
 
 export function DialogTitle({ children }: DialogTitleProps) {
-  return <h2 className="text-xl font-semibold text-slate-900">{children}</h2>;
+  return <h2 className="text-xl font-semibold text-[var(--text-primary)]">{children}</h2>;
 }
 
 interface DialogDescriptionProps {
@@ -82,7 +88,7 @@ interface DialogDescriptionProps {
 }
 
 export function DialogDescription({ children }: DialogDescriptionProps) {
-  return <p className="text-sm text-slate-500 mt-1">{children}</p>;
+  return <p className="text-sm text-[var(--text-secondary)] mt-1">{children}</p>;
 }
 
 interface DialogCloseProps {
@@ -93,7 +99,7 @@ export function DialogClose({ onClose }: DialogCloseProps) {
   return (
     <button
       onClick={onClose}
-      className="absolute right-4 top-4 p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+      className="absolute right-6 top-6 p-2 rounded-[8px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--background-hover)] transition-all duration-200 w-8 h-8 flex items-center justify-center"
     >
       <X className="w-5 h-5" />
     </button>
@@ -105,5 +111,9 @@ interface DialogFooterProps {
 }
 
 export function DialogFooter({ children }: DialogFooterProps) {
-  return <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">{children}</div>;
+  return (
+    <div className="flex items-center justify-end gap-3 p-6 border-t border-[var(--border-default)] bg-[var(--background-tertiary)]">
+      {children}
+    </div>
+  );
 }

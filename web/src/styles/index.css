@@ -1,32 +1,99 @@
 @import "tailwindcss";
 
-/* Light theme - AdminRHS style */
+/* Game Academy Design System - Light Theme */
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
-  --card: #ffffff;
-  --card-foreground: #0f172a;
-  --popover: #ffffff;
-  --popover-foreground: #0f172a;
-  --primary: #2563eb;
-  --primary-foreground: #ffffff;
-  --secondary: #f1f5f9;
-  --secondary-foreground: #0f172a;
-  --muted: #f1f5f9;
-  --muted-foreground: #64748b;
-  --accent: #f1f5f9;
-  --accent-foreground: #0f172a;
-  --destructive: #ef4444;
-  --destructive-foreground: #ffffff;
-  --border: #e2e8f0;
-  --input: #e2e8f0;
-  --ring: #2563eb;
+  /* Colors - Primary */
+  --primary-50: #EFF6FF;
+  --primary-100: #DBEAFE;
+  --primary-200: #BFDBFE;
+  --primary-300: #93C5FD;
+  --primary-400: #60A5FA;
+  --primary-500: #2563EB;
+  --primary-600: #1D4ED8;
+  --primary-700: #1E40AF;
+  --primary-800: #1E3A8A;
+  --primary-900: #1E3A8A;
+  --primary-default: #2563EB;
+  --primary-hover: #3B82F6;
+  --primary-active: #1D4ED8;
+
+  /* Colors - Secondary/Neutral */
+  --secondary-50: #F9FAFB;
+  --secondary-100: #F3F4F6;
+  --secondary-200: #E5E7EB;
+  --secondary-300: #D1D5DB;
+  --secondary-400: #9CA3AF;
+  --secondary-500: #6B7280;
+  --secondary-600: #4B5563;
+  --secondary-700: #374151;
+  --secondary-800: #1F2937;
+  --secondary-900: #111827;
+
+  /* Colors - Semantic */
+  --success: #16A34A;
+  --success-hover: #22C55E;
+  --success-light: #D1FAE5;
+  --warning: #F97316;
+  --warning-hover: #FB923C;
+  --warning-light: #FED7AA;
+  --error: #DC2626;
+  --error-hover: #EF4444;
+  --error-light: #FEE2E2;
+  --info: #0EA5E9;
+  --info-hover: #38BDF8;
+  --info-light: #E0F2FE;
+
+  /* Colors - Background */
+  --background-primary: #f7fafc;
+  --background-secondary: #ffffff;
+  --background-tertiary: #edf2f7;
+  --background-paper: #ffffff;
+  --background-surface: #ffffff;
+  --background-hover: #edf2f7;
+  --background-disabled: #F3F4F6;
+
+  /* Colors - Text */
+  --text-primary: #2d3748;
+  --text-secondary: #718096;
+  --text-tertiary: #a0aec0;
+  --text-disabled: #9CA3AF;
+  --text-inverse: #ffffff;
+  --text-link: #2563EB;
+  --text-link-hover: #1D4ED8;
+
+  /* Colors - Border */
+  --border-default: #e0e0e0;
+  --border-hover: #cbd5e0;
+  --border-focus: #2563EB;
+  --border-error: #DC2626;
+  --border-disabled: #E5E7EB;
+
+  /* Legacy variables for compatibility */
+  --background: var(--background-primary);
+  --foreground: var(--text-primary);
+  --card: var(--background-paper);
+  --card-foreground: var(--text-primary);
+  --popover: var(--background-paper);
+  --popover-foreground: var(--text-primary);
+  --primary: var(--primary-default);
+  --primary-foreground: var(--text-inverse);
+  --secondary: var(--secondary-200);
+  --secondary-foreground: var(--text-primary);
+  --muted: var(--secondary-100);
+  --muted-foreground: var(--text-secondary);
+  --accent: var(--secondary-100);
+  --accent-foreground: var(--text-primary);
+  --destructive: var(--error);
+  --destructive-foreground: var(--text-inverse);
+  --border: var(--border-default);
+  --input: var(--border-default);
+  --ring: var(--primary-default);
   --radius: 0.5rem;
-  --sidebar-bg: #0f172a;
-  --sidebar-foreground: #e2e8f0;
-  --sidebar-border: #1e293b;
-  --sidebar-accent: #1e293b;
-  --sidebar-primary: #2563eb;
+  --sidebar-bg: #ffffff;
+  --sidebar-foreground: var(--text-primary);
+  --sidebar-border: var(--border-default);
+  --sidebar-accent: var(--secondary-100);
+  --sidebar-primary: var(--primary-default);
 }
 
 @theme inline {
@@ -65,48 +132,164 @@
     border-color: var(--border);
   }
   body {
-    background-color: var(--background);
-    color: var(--foreground);
-    font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: var(--background-primary);
+    color: var(--text-primary);
+    font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica', 'Arial', sans-serif;
+    font-size: 16px;
+    font-weight: 400;
+    line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+
+  /* Typography */
+  h1 {
+    font-family: 'Roboto', sans-serif;
+    font-size: 48px;
+    font-weight: 600;
+    line-height: 1.208;
+    color: var(--text-primary);
+    letter-spacing: 0em;
+  }
+
+  h2 {
+    font-family: 'Roboto', sans-serif;
+    font-size: 40px;
+    font-weight: 600;
+    line-height: 1.2;
+    color: var(--text-primary);
+    letter-spacing: 0em;
+  }
+
+  h3 {
+    font-family: 'Roboto', sans-serif;
+    font-size: 32px;
+    font-weight: 600;
+    line-height: 1.1875;
+    color: var(--text-primary);
+    letter-spacing: 0em;
+  }
+
+  h4 {
+    font-family: 'Roboto', sans-serif;
+    font-size: 28px;
+    font-weight: 600;
+    line-height: 1.214;
+    color: var(--text-primary);
+    letter-spacing: 0em;
+  }
+
+  h5 {
+    font-family: 'Roboto', sans-serif;
+    font-size: 24px;
+    font-weight: 600;
+    line-height: 1.167;
+    color: var(--text-primary);
+    letter-spacing: 0em;
+  }
 }
 
-/* Custom scrollbar */
+/* Custom scrollbar - Game Academy Design System */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: #f5f5f5;
   border-radius: 4px;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+::-webkit-scrollbar-thumb {
+  background: #e0e0e0;
+  border-radius: 4px;
+  transition: background 200ms ease;
 }
 
-/* Animations */
+::-webkit-scrollbar-thumb:hover {
+  background: #cbd5e0;
+}
+
+/* Animations - Game Academy Design System */
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 
-@keyframes zoomIn95 {
-  from { 
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
     opacity: 0;
     transform: scale(0.95);
   }
-  to { 
+  to {
     opacity: 1;
     transform: scale(1);
   }
+}
+
+@keyframes scaleOut {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 @keyframes pulse {
@@ -114,22 +297,99 @@
   50% { opacity: 0.5; }
 }
 
+@keyframes fluidWave {
+  0%, 100% { transform: scaleY(0.1); }
+  50% { transform: scaleY(1); }
+}
+
+/* Animation utilities */
 .animate-in {
   animation-fill-mode: both;
 }
 
 .fade-in {
   animation-name: fadeIn;
+  animation-duration: 150ms;
+  animation-timing-function: ease-in-out;
 }
 
-.zoom-in-95 {
-  animation-name: zoomIn95;
+.fade-out {
+  animation-name: fadeOut;
+  animation-duration: 150ms;
+  animation-timing-function: ease-in-out;
 }
 
-.duration-200 {
+.slide-up {
+  animation-name: slideUp;
+  animation-duration: 300ms;
+  animation-timing-function: ease-out;
+}
+
+.slide-down {
+  animation-name: slideDown;
   animation-duration: 200ms;
+  animation-timing-function: ease-out;
+}
+
+.slide-in-right {
+  animation-name: slideInRight;
+  animation-duration: 300ms;
+  animation-timing-function: ease-out;
+}
+
+.slide-in-left {
+  animation-name: slideInLeft;
+  animation-duration: 300ms;
+  animation-timing-function: ease-out;
+}
+
+.scale-in {
+  animation-name: scaleIn;
+  animation-duration: 300ms;
+  animation-timing-function: ease-out;
+}
+
+.scale-out {
+  animation-name: scaleOut;
+  animation-duration: 300ms;
+  animation-timing-function: ease-out;
 }
 
 .animate-pulse {
-  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Transitions */
+.transition-fast {
+  transition: all 150ms ease-in-out;
+}
+
+.transition-normal {
+  transition: all 300ms ease-in-out;
+}
+
+.transition-slow {
+  transition: all 500ms ease-in-out;
+}
+
+/* Focus styles for accessibility */
+*:focus-visible {
+  outline: 2px solid var(--primary-default);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

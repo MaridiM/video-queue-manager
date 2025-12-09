@@ -35,25 +35,25 @@ export default function App() {
   const [currentView, setCurrentView] = useState<View>("dashboard");
 
   return (
-    <div className="min-h-screen bg-slate-50 flex font-sans text-slate-900">
-      {/* Sidebar - AdminRHS style */}
-      <aside className="w-64 bg-slate-900 text-white hidden md:flex flex-col fixed inset-y-0 left-0 z-10">
-        <div className="p-6 border-b border-slate-800">
-          <div className="flex items-center gap-2 font-bold text-xl tracking-tight">
-            <div className="w-8 h-8 bg-blue-600 rounded-md flex items-center justify-center">
+    <div className="min-h-screen bg-[var(--background-primary)] flex font-sans text-[var(--text-primary)]">
+      {/* Sidebar - Game Academy Design System */}
+      <aside className="w-64 bg-[var(--sidebar-bg)] border-r border-[var(--sidebar-border)] hidden md:flex flex-col fixed inset-y-0 left-0 z-[100] transition-all duration-300">
+        <div className="p-6 border-b border-[var(--sidebar-border)] min-h-[64px]">
+          <div className="flex items-center gap-3 font-bold text-xl tracking-tight text-[var(--text-primary)]">
+            <div className="w-8 h-8 bg-[var(--primary-default)] rounded-[8px] flex items-center justify-center text-white">
               Q
             </div>
             QueueMgr
           </div>
         </div>
 
-        <nav className="flex-1 p-4 space-y-1">
+        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
           <button
             onClick={() => setCurrentView("dashboard")}
-            className={`w-full flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-[8px] transition-all duration-200 font-medium text-sm ${
               currentView === "dashboard"
-                ? "bg-blue-600 text-white shadow-sm"
-                : "text-slate-400 hover:text-white hover:bg-slate-800"
+                ? "bg-[rgba(37,99,235,0.15)] text-[var(--primary-default)]"
+                : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--background-hover)]"
             }`}
           >
             <LayoutDashboard size={20} />
@@ -61,10 +61,10 @@ export default function App() {
           </button>
           <button
             onClick={() => setCurrentView("search")}
-            className={`w-full flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-[8px] transition-all duration-200 font-medium text-sm ${
               currentView === "search"
-                ? "bg-blue-600 text-white shadow-sm"
-                : "text-slate-400 hover:text-white hover:bg-slate-800"
+                ? "bg-[rgba(37,99,235,0.15)] text-[var(--primary-default)]"
+                : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--background-hover)]"
             }`}
           >
             <Search size={20} />
@@ -72,10 +72,10 @@ export default function App() {
           </button>
           <button
             onClick={() => setCurrentView("queue")}
-            className={`w-full flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-[8px] transition-all duration-200 font-medium text-sm ${
               currentView === "queue"
-                ? "bg-blue-600 text-white shadow-sm"
-                : "text-slate-400 hover:text-white hover:bg-slate-800"
+                ? "bg-[rgba(37,99,235,0.15)] text-[var(--primary-default)]"
+                : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--background-hover)]"
             }`}
           >
             <ListVideo size={20} />
@@ -111,21 +111,25 @@ export default function App() {
           </button> */}
           <button 
             onClick={() => setCurrentView('settings')}
-            className={`w-full flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${currentView === 'settings' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-[8px] transition-all duration-200 font-medium text-sm ${
+              currentView === 'settings' 
+                ? 'bg-[rgba(37,99,235,0.15)] text-[var(--primary-default)]' 
+                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--background-hover)]'
+            }`}
           >
             <Settings size={20} />
             Settings
           </button>
         </nav>
 
-        <div className="p-4 border-t border-slate-800">
+        <div className="p-4 border-t border-[var(--sidebar-border)]">
           <div className="flex items-center gap-3 px-2">
-            <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center border border-blue-500/30">
-              <User size={16} />
+            <div className="w-10 h-10 rounded-full bg-[var(--primary-default)] text-white flex items-center justify-center text-base font-semibold flex-shrink-0">
+              <User size={20} />
             </div>
-            <div className="text-sm">
-              <div className="font-medium text-slate-200">Admin User</div>
-              <div className="text-xs text-slate-500">admin@rhs.com</div>
+            <div className="text-sm min-w-0">
+              <div className="font-medium text-[var(--text-primary)] truncate">Admin User</div>
+              <div className="text-xs text-[var(--text-secondary)] truncate">admin@rhs.com</div>
             </div>
           </div>
         </div>
@@ -134,9 +138,9 @@ export default function App() {
       {/* Main Content */}
       <main className="flex-1 md:ml-64 min-h-screen flex flex-col">
         {/* Top Header */}
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 sticky top-0 z-10">
+        <header className="h-16 bg-[var(--background-paper)] border-b border-[var(--border-default)] flex items-center justify-between px-6 sticky top-0 z-[1030] shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
           <div className="flex items-center gap-4">
-            <h1 className="text-xl font-semibold text-slate-800">
+            <h1 className="text-xl font-semibold text-[var(--text-primary)]">
               {currentView === "dashboard" && "Dashboard Overview"}
               {currentView === "queue" && "Video Queue"}
               {currentView === "import" && "Bulk Video Import"}
@@ -146,21 +150,21 @@ export default function App() {
               {currentView === "knowledge" && "Knowledge Map"}
               {currentView === "settings" && "Settings"}
             </h1>
-            <span className="hidden sm:inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
+            <span className="hidden sm:inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-[rgba(37,99,235,0.15)] text-[var(--primary-default)] border border-[var(--primary-400)]">
               Phase 0: Selection
             </span>
           </div>
 
           <div className="flex items-center gap-4">
-            <button className="relative p-2 text-slate-400 hover:text-slate-600 transition-colors">
+            <button className="relative p-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--background-hover)] rounded-[8px] transition-all duration-200">
               <Bell size={20} />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[var(--error)] rounded-full border-2 border-white"></span>
             </button>
           </div>
         </header>
 
         {/* Content Area */}
-        <div className="p-6 max-w-7xl mx-auto w-full">
+        <div className="p-6 max-w-[1280px] mx-auto w-full">
           {currentView === "dashboard" && (
             <div className="space-y-6">
               <DashboardStats />
