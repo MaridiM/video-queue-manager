@@ -4,6 +4,56 @@
 
 ---
 
+## [1.12.0] - 2025-12-02
+
+### Added - Video Catalog Page in Game Academy Style
+
+Создана страница Video Queue в стиле Game Academy Video Catalog с карточками видео.
+
+#### 🎨 Новый дизайн страницы Video Queue:
+
+**VideoCard Component (`apps/web/src/components/VideoCard.tsx`):**
+- YouTube thumbnail preview с автоматическим получением изображений
+- Duration badge на превью видео (формат HH:MM)
+- Play overlay с анимацией при hover
+- Channel avatar с инициалами и градиентным фоном
+- Status badge в левом верхнем углу превью
+- Title с hover эффектом (меняет цвет на primary)
+- Channel name и meta информация (views, publish date)
+- Department и Priority badges
+- Notes (если есть) с line-clamp
+- Footer с likes и added date
+- Action buttons (More options, Open in YouTube)
+
+**VideoQueueCatalog Page (`apps/web/src/pages/VideoQueueCatalog.tsx`):**
+- Header с заголовком "Video Catalog" и поиском справа
+- Search bar с иконкой поиска и микрофоном (voice search placeholder)
+- Кнопка "+ Create" рядом с поиском
+- Banner image placeholder с градиентным фоном
+- Category filters в стиле Game Academy:
+  - All, General, Developers, Designers, Marketers, Videographers, Social Media
+  - Активные фильтры используют цвета департаментов
+  - Счетчики видео в каждом фильтре
+  - Иконки для каждой категории
+- Группировка видео по департаментам с заголовками
+- Grid layout: 3 колонки на desktop, 2 на tablet, 1 на mobile
+- Empty state с призывом к действию
+
+**Стили:**
+- Все компоненты используют CSS переменные из Game Academy Design System
+- Правильные border radius (12px для карточек, 8px для кнопок)
+- Тени и hover эффекты согласно дизайн-системе
+- Transitions: 300ms ease-in-out
+- Scrollbar-hide utility для горизонтальной прокрутки фильтров
+
+**Файлы изменены:**
+- `apps/web/src/components/VideoCard.tsx` - новый компонент карточки видео
+- `apps/web/src/pages/VideoQueueCatalog.tsx` - новая страница каталога видео
+- `apps/web/src/App.tsx` - интеграция VideoQueueCatalog
+- `apps/web/src/styles/index.css` - добавлен scrollbar-hide utility
+
+---
+
 ## [1.11.0] - 2025-12-02
 
 ### Added - Game Academy Design System Integration

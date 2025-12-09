@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { VideoQueueTable } from "./components/VideoQueueTable";
+import { VideoQueueCatalog } from "./pages/VideoQueueCatalog";
 import { DashboardStats } from "./components/DashboardStats";
 import { UploadTranscriptionScreen } from "./components/UploadTranscriptionScreen";
 import { CostTrackerWidget } from "./components/CostTrackerWidget";
@@ -164,24 +165,27 @@ export default function App() {
         </header>
 
         {/* Content Area */}
-        <div className="p-6 max-w-[1280px] mx-auto w-full">
+        <div className="p-6 max-w-[1920px] mx-auto w-full">
           {currentView === "dashboard" && (
             <div className="space-y-6">
               <DashboardStats />
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 <div>
                   <CostTrackerWidget />
                 </div>
-                <div className="border-2 border-dashed border-slate-200 rounded-xl h-64 flex items-center justify-center text-slate-400">
+                <div className="border-2 border-dashed border-[var(--border-default)] rounded-[12px] h-64 flex items-center justify-center text-[var(--text-tertiary)]">
                   Additional Widget Space
                 </div>
-                <div className="border-2 border-dashed border-slate-200 rounded-xl h-64 flex items-center justify-center text-slate-400">
+                <div className="border-2 border-dashed border-[var(--border-default)] rounded-[12px] h-64 flex items-center justify-center text-[var(--text-tertiary)]">
+                  Additional Widget Space
+                </div>
+                <div className="border-2 border-dashed border-[var(--border-default)] rounded-[12px] h-64 flex items-center justify-center text-[var(--text-tertiary)]">
                   Additional Widget Space
                 </div>
               </div>
             </div>
           )}
-          {currentView === "queue" && <VideoQueueTable />}
+          {currentView === "queue" && <VideoQueueCatalog />}
           {currentView === "import" && <BulkVideoImport />}
           {currentView === "upload" && <UploadTranscriptionScreen />}
           {currentView === "extraction" && <EntityExtractionViewer />}
