@@ -1,38 +1,34 @@
-# Database Documentation
+# Промпт: Database Schema - Queue Manager
 
-Документация по базе данных Queue Manager.
+## Цель
 
-## 📋 Содержание
+Создать полную схему базы данных PostgreSQL для Queue Manager приложения с использованием Prisma ORM.
 
-1. [Обзор](#обзор)
-2. [Схема базы данных](#схема-базы-данных)
-3. [Модели данных](#модели-данных)
-4. [Связи](#связи)
-5. [Миграции](#миграции)
-6. [Seed данные](#seed-данные)
+## Технические требования
 
----
-
-## Обзор
-
-База данных построена на **PostgreSQL 16+** с использованием **Prisma ORM** для управления схемой и миграциями.
-
-### Технические детали
-
-- **СУБД:** PostgreSQL 16
-- **ORM:** Prisma 7.0
-- **Порт:** 5434 (Docker)
+- **СУБД:** PostgreSQL 16+
+- **ORM:** Prisma 7.0.1
 - **База данных:** `phase0`
-- **Пользователь:** `postgres`
+- **Порт:** 5434 (Docker)
 
----
+## Полная схема Prisma
 
-## Схема базы данных
-
-### Enums
-
-#### DepartmentCode
 ```prisma
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =====================================================
+// ENUMS
+// =====================================================
+
 enum DepartmentCode {
   DEV   // Development
   SMM   // Social Media Marketing
@@ -41,19 +37,13 @@ enum DepartmentCode {
   DGN   // Design
   MKT   // Marketing
 }
-```
 
-#### PriorityLevel
-```prisma
 enum PriorityLevel {
   low
   medium
   high
 }
-```
 
-#### VideoStatus
-```prisma
 enum VideoStatus {
   pending
   selected
@@ -63,45 +53,31 @@ enum VideoStatus {
   complete
   rejected
 }
-```
 
-#### SearchStatus
-```prisma
 enum SearchStatus {
   Assigned
-  In_Progress    // Maps to "In Progress" in CSV
+  In_Progress @map("In Progress")
   Completed
 }
-```
 
-#### EntityType
-```prisma
 enum EntityType {
   TOOL
   WORKFLOW
   ACTION
   OBJECT
 }
-```
 
-#### EntityClassification
-```prisma
 enum EntityClassification {
   NEW
   EXISTING
   UPDATE
 }
-```
 
----
+// =====================================================
+// TABLES
+// =====================================================
 
-## Модели данных
-
-### Department
-
-Справочник департаментов.
-
-```prisma
+// Departments reference table
 model Department {
   code        DepartmentCode @id
   name        String         @db.VarChar(100)
@@ -116,20 +92,8 @@ model Department {
 
   @@map("departments")
 }
-```
 
-**Поля:**
-- `code` - код департамента (PK)
-- `name` - название
-- `description` - описание (опционально)
-
----
-
-### Employee
-
-Сотрудники.
-
-```prisma
+// Employees table
 model Employee {
   id         String         @id @default(uuid())
   email      String         @unique @db.VarChar(255)
@@ -139,21 +103,15 @@ model Employee {
   createdAt  DateTime       @default(now()) @map("created_at")
   updatedAt  DateTime       @updatedAt @map("updated_at")
 
+  // Relations
   departmentRef Department? @relation(fields: [department], references: [code])
 
   @@index([email])
   @@index([department])
   @@map("employees")
 }
-```
 
----
-
-### SearchQueue
-
-Очередь поисковых запросов.
-
-```prisma
+// Search Queue table
 model SearchQueue {
   searchId             String         @id @map("search_id") @db.VarChar(20)
   employee             String?        @db.VarChar(255)
@@ -186,21 +144,8 @@ model SearchQueue {
   @@index([dateAssigned])
   @@map("search_queue")
 }
-```
 
-**Ключевые поля:**
-- `searchId` - уникальный ID (формат: `SEARCH-001`)
-- `searchQuery` - текст поискового запроса
-- `perplexityCreativity` - уровень креативности (0.0-1.0)
-- `videosFound` - количество найденных видео
-
----
-
-### VideoQueue
-
-Очередь видео для обработки.
-
-```prisma
+// Video Queue table
 model VideoQueue {
   id              String         @id @default(uuid())
   queueId         String?        @unique @map("queue_id") @db.VarChar(20)
@@ -254,25 +199,8 @@ model VideoQueue {
   @@index([createdAt])
   @@map("video_queue")
 }
-```
 
-**Ключевые поля:**
-- `queueId` - уникальный ID очереди (формат: `VQ-001`)
-- `videoId` - YouTube video ID (11 символов)
-- `priorityScore` - автоматически рассчитываемый рейтинг (0-100)
-- `perplexitySearchId` - связь с SearchQueue
-
-**Автоматические даты:**
-- При статусе `selected` → устанавливается `selectedDate`
-- При статусе `transcribed`/`complete` → устанавливается `parsedDate`
-
----
-
-### Transcription
-
-Транскрипции видео.
-
-```prisma
+// Transcriptions table
 model Transcription {
   id                    String       @id @default(uuid())
   videoId               String       @map("video_id")
@@ -295,15 +223,8 @@ model Transcription {
   @@index([status])
   @@map("transcriptions")
 }
-```
 
----
-
-### ExtractedEntity
-
-Извлеченные сущности из транскрипций.
-
-```prisma
+// Extracted Entities table
 model ExtractedEntity {
   id                    String               @id @default(uuid())
   entityType            EntityType           @map("entity_type")
@@ -320,7 +241,7 @@ model ExtractedEntity {
   
   // Workflow specific fields
   stepsCount            Int?                 @map("steps_count")
-  estimatedTimeMinutes Int?                 @map("estimated_time_minutes")
+  estimatedTimeMinutes  Int?                 @map("estimated_time_minutes")
   difficulty            String?              @db.VarChar(50)
   prerequisites         String[]             @default([])
   outputs               String[]             @default([])
@@ -336,7 +257,7 @@ model ExtractedEntity {
 
   // Relations
   video                 VideoQueue?          @relation(fields: [videoId], references: [id], onDelete: SetNull)
-  transcription         Transcription?      @relation(fields: [transcriptionId], references: [id], onDelete: SetNull)
+  transcription         Transcription?       @relation(fields: [transcriptionId], references: [id], onDelete: SetNull)
 
   @@index([entityType])
   @@index([classification])
@@ -345,21 +266,8 @@ model ExtractedEntity {
   @@index([category])
   @@map("extracted_entities")
 }
-```
 
-**Типы сущностей:**
-- `TOOL` - инструменты
-- `WORKFLOW` - рабочие процессы
-- `ACTION` - действия
-- `OBJECT` - объекты/документы
-
----
-
-### Research
-
-Мастер-лист исследований.
-
-```prisma
+// Research Master List
 model Research {
   id           String         @id @default(uuid())
   researchId   String         @unique @map("research_id") @db.VarChar(20)
@@ -387,9 +295,7 @@ model Research {
 }
 ```
 
----
-
-## Связи
+## Связи между таблицами
 
 ### Диаграмма связей
 
@@ -411,109 +317,125 @@ Transcription (1) ──< (N) ExtractedEntity
 - `VideoQueue` → `ExtractedEntity` (SET NULL)
 - `Transcription` → `ExtractedEntity` (SET NULL)
 
----
+## Индексы
+
+### VideoQueue
+- `status` - для фильтрации по статусу
+- `department` - для фильтрации по департаменту
+- `priority` - для сортировки по приоритету
+- `assignedTo` - для поиска по назначенному
+- `perplexitySearchId` - для связи с SearchQueue
+- `createdAt` - для сортировки по дате
+
+### SearchQueue
+- `status` - для фильтрации по статусу
+- `department` - для фильтрации по департаменту
+- `employee` - для поиска по сотруднику
+- `dateAssigned` - для сортировки по дате
+
+### Transcription
+- `videoId` - для связи с VideoQueue
+- `status` - для фильтрации по статусу
+
+### ExtractedEntity
+- `entityType` - для фильтрации по типу
+- `classification` - для фильтрации по классификации
+- `videoId` - для связи с VideoQueue
+- `entityName` - для поиска по названию
+- `category` - для фильтрации по категории
 
 ## Миграции
+
+### Создание миграции
+
+```bash
+npx prisma migrate dev --name init
+```
 
 ### Применение миграций
 
 ```bash
-# Применить все миграции
-npm run db:migrate
-
-# Сбросить БД и применить миграции
-npm run db:reset
-
-# Создать новую миграцию
-npx prisma migrate dev --name migration_name
+npx prisma migrate deploy
 ```
 
-### Структура миграций
+### Сброс БД
 
+```bash
+npx prisma migrate reset --force
 ```
-prisma/
-└── migrations/
-    └── 20251128145109_init/
-        └── migration.sql
-```
-
----
 
 ## Seed данные
 
-### Заполнение тестовыми данными
+### prisma/seed.js
 
-```bash
-npm run db:seed
+```javascript
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
+
+async function main() {
+  // Create departments
+  const departments = [
+    { code: 'DEV', name: 'Development', description: 'Software development' },
+    { code: 'SMM', name: 'Social Media Marketing', description: 'Social media and marketing' },
+    { code: 'VID', name: 'Video', description: 'Video production' },
+    { code: 'AID', name: 'AI & Automation', description: 'AI and automation' },
+    { code: 'DGN', name: 'Design', description: 'Graphic design' },
+    { code: 'MKT', name: 'Marketing', description: 'Marketing' },
+  ];
+
+  for (const dept of departments) {
+    await prisma.department.upsert({
+      where: { code: dept.code },
+      update: {},
+      create: dept,
+    });
+  }
+
+  // Create test search queue entries
+  // Create test video queue entries
+}
+
+main()
+  .catch(console.error)
+  .finally(() => prisma.$disconnect());
 ```
 
-**Seed файл:** `prisma/seed.js`
+## Примеры запросов
 
-**Создаются:**
-- Департаменты (DEV, SMM, VID, AID, DGN, MKT)
-- Тестовые записи SearchQueue
-- Тестовые записи VideoQueue
-
----
-
-## Индексы
-
-### Оптимизация запросов
-
-**VideoQueue:**
-- `status` - фильтрация по статусу
-- `department` - фильтрация по департаменту
-- `priority` - сортировка по приоритету
-- `assignedTo` - поиск по назначенному
-- `perplexitySearchId` - связь с SearchQueue
-- `createdAt` - сортировка по дате
-
-**SearchQueue:**
-- `status` - фильтрация по статусу
-- `department` - фильтрация по департаменту
-- `employee` - поиск по сотруднику
-- `dateAssigned` - сортировка по дате
-
-**Transcription:**
-- `videoId` - связь с VideoQueue
-- `status` - фильтрация по статусу
-
-**ExtractedEntity:**
-- `entityType` - фильтрация по типу
-- `classification` - фильтрация по классификации
-- `videoId` - связь с VideoQueue
-- `entityName` - поиск по названию
-- `category` - фильтрация по категории
-
----
-
-## Запросы
-
-### Примеры запросов через Prisma
+### Получить все видео со статусом "pending"
 
 ```typescript
-// Получить все видео со статусом "pending"
 const pendingVideos = await prisma.videoQueue.findMany({
   where: { status: 'pending' },
   orderBy: { priorityScore: 'desc' }
 });
+```
 
-// Получить видео с транскрипциями
+### Получить видео с транскрипциями
+
+```typescript
 const videosWithTranscripts = await prisma.videoQueue.findMany({
   include: {
     transcriptions: true,
     entities: true
   }
 });
+```
 
-// Статистика по департаментам
+### Статистика по департаментам
+
+```typescript
 const deptStats = await prisma.videoQueue.groupBy({
   by: ['department'],
   _count: { department: true },
   _avg: { priorityScore: true }
 });
+```
 
-// Поиск видео по названию
+### Поиск видео по названию
+
+```typescript
 const searchResults = await prisma.videoQueue.findMany({
   where: {
     videoTitle: {
@@ -524,33 +446,55 @@ const searchResults = await prisma.videoQueue.findMany({
 });
 ```
 
----
+## Требования к реализации
 
-## Резервное копирование
+1. Все модели должны иметь правильные типы полей
+2. Индексы должны быть созданы для часто запрашиваемых полей
+3. Связи должны быть настроены корректно
+4. Каскадные удаления должны работать правильно
+5. Timestamps должны обновляться автоматически
+6. Default значения должны быть установлены где необходимо
 
-### Экспорт данных
+## Docker Compose
 
-```bash
-# Экспорт через pg_dump
-pg_dump -U postgres -d phase0 > backup.sql
+```yaml
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: rems-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: phase0
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-# Импорт
-psql -U postgres -d phase0 < backup.sql
+volumes:
+  postgres_data:
+    driver: local
 ```
 
-### Prisma Studio
+## Переменные окружения
 
-Визуальный редактор базы данных:
-
-```bash
-npm run db:studio
+```env
+DATABASE_URL=postgresql://postgres:postgres@localhost:5434/phase0
 ```
 
-Открывается на `http://localhost:5555`
+## Требования к реализации
 
----
-
-**Последнее обновление:** 2025-12-02
+1. Схема должна быть полностью типизирована
+2. Все связи должны работать корректно
+3. Индексы должны оптимизировать частые запросы
+4. Миграции должны быть обратимыми
+5. Seed данные должны заполнять базовые справочники
 
 
 

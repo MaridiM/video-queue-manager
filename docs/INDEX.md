@@ -58,6 +58,14 @@
 - Переменные окружения
 - Мониторинг
 
+### 📝 [Prompts](./prompts/)
+**Промпты для генерации документации**
+- Обзор проекта
+- Backend архитектура
+- Frontend архитектура
+- Схема базы данных
+- Интеграции
+
 ---
 
 ## Быстрая навигация
@@ -96,7 +104,13 @@ docs/
 ├── ARCHITECTURE.md    # Архитектура
 ├── API.md             # API документация
 ├── DATABASE.md        # База данных
-└── DEPLOYMENT.md      # Развертывание
+├── DEPLOYMENT.md      # Развертывание
+└── prompts/           # Промпты для генерации документации
+    ├── 00_PROJECT_OVERVIEW.md
+    ├── 01_BACKEND_ARCHITECTURE.md
+    ├── 02_FRONTEND_ARCHITECTURE.md
+    ├── 03_DATABASE_SCHEMA.md
+    └── 04_INTEGRATIONS.md
 ```
 
 ---

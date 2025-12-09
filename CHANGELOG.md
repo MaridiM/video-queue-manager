@@ -4,6 +4,52 @@
 
 ---
 
+## [1.10.0] - 2025-12-02
+
+### Added - New Video Catalog UI
+
+Полностью переделан интерфейс Video Queue в стиле современного видео-каталога.
+
+#### 🎨 Новый дизайн:
+
+**VideoCard Component (`apps/web/src/components/VideoCard.tsx`):**
+- YouTube thumbnail preview с автоматическим получением изображений
+- Duration badge на превью видео
+- Quick actions при hover: Add to queue, Save to Watch Later, Share
+- Play overlay с красивой анимацией
+- Channel avatar с инициалами
+- Status, Department и Priority badges
+- Views, Likes и дата публикации
+- Hover эффекты и плавные анимации
+
+**VideoQueueCatalog Component (`apps/web/src/components/VideoQueueCatalog.tsx`):**
+- Grid layout с карточками видео (3 колонки на desktop)
+- Category tabs: All, Developers, Designers, Marketers, Videographers, Social Media, AI & Data
+- Grid/List view toggle для переключения режимов отображения
+- Gradient header banner с красивым фоном
+- Enhanced stats cards с градиентами и иконками
+- Collapsible filters panel
+- Search with real-time filtering
+- Empty state с призывом к действию
+
+#### 🐛 Исправления (API Error Handling):
+
+**Global Error Handler (`apps/api/server.js`):**
+- Добавлен middleware для установки `Content-Type: application/json` для всех API routes
+- Глобальный обработчик ошибок с корректным JSON форматом
+- 404 handler для неизвестных маршрутов
+- Специальная обработка ошибок Prisma (P1001, P1002, P1003 - database connection)
+- Исправлена ошибка "Invalid response format. Expected JSON, got text/plain"
+- Все endpoint'ы теперь используют `next(error)` для передачи ошибок в глобальный handler
+
+**Файлы изменены:**
+- `apps/web/src/components/VideoCard.tsx` - новый компонент карточки видео
+- `apps/web/src/components/VideoQueueCatalog.tsx` - новый компонент каталога видео
+- `apps/web/src/App.tsx` - интеграция VideoQueueCatalog
+- `apps/api/server.js` - улучшена обработка ошибок, добавлены middleware
+
+---
+
 ## [1.9.3] - 2025-12-02
 
 ### Fixed - Google AI Rate Limit Error (429) Handling

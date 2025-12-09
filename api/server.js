@@ -136,6 +136,16 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
+// Ensure all API responses are JSON (unless explicitly set otherwise)
+// This middleware only applies to /api routes
+app.use((req, res, next) => {
+  // Only set Content-Type for API routes if not already set
+  if (req.path.startsWith('/api') && !res.getHeader('Content-Type')) {
+    res.setHeader('Content-Type', 'application/json');
+  }
+  next();
+});
+
 // =====================================================
 // UTILITY FUNCTIONS
 // =====================================================
@@ -202,7 +212,7 @@ function extractVideoId(url) {
 // =====================================================
 
 // GET /api/search-queue - Get all search queue entries
-app.get('/api/search-queue', async (req, res) => {
+app.get('/api/search-queue', async (req, res, next) => {
   try {
     const data = await prisma.searchQueue.findMany({
       orderBy: { createdAt: 'desc' },
@@ -231,7 +241,8 @@ app.get('/api/search-queue', async (req, res) => {
     res.json({ success: true, data: transformed });
   } catch (error) {
     console.error('Error fetching search queue:', error);
-    res.status(500).json({ success: false, error: error.message });
+    // Pass error to global error handler
+    next(error);
   }
 });
 
@@ -517,7 +528,7 @@ app.delete('/api/search-queue/:id', async (req, res) => {
 // =====================================================
 
 // GET /api/video-queue - Get all video queue entries
-app.get('/api/video-queue', async (req, res) => {
+app.get('/api/video-queue', async (req, res, next) => {
   try {
     const data = await prisma.videoQueue.findMany({
       orderBy: { createdAt: 'desc' },
@@ -559,7 +570,8 @@ app.get('/api/video-queue', async (req, res) => {
     res.json({ success: true, data: transformed });
   } catch (error) {
     console.error('Error fetching video queue:', error);
-    res.status(500).json({ success: false, error: error.message });
+    // Pass error to global error handler
+    next(error);
   }
 });
 
@@ -2613,31 +2625,36 @@ app.get('/api/transcription/status', (req, res) => {
 // =====================================================
 
 // GET /api/settings - Get current AI settings (without exposing full API keys)
-app.get('/api/settings', (req, res) => {
-  res.json({
-    success: true,
-    data: {
-      openai: {
-        configured: !!aiSettings.openai.apiKey,
-        enabled: aiSettings.openai.enabled,
-        model: aiSettings.openai.model || 'gpt-4o-mini',
-        availableModels: AVAILABLE_MODELS.openai,
-        apiKeyPreview: aiSettings.openai.apiKey 
-          ? `${aiSettings.openai.apiKey.substring(0, 7)}...${aiSettings.openai.apiKey.slice(-4)}`
-          : null
-      },
-      google: {
-        configured: !!aiSettings.google.apiKey,
-        enabled: aiSettings.google.enabled,
-        model: aiSettings.google.model || 'gemini-2.0-flash',
-        availableModels: AVAILABLE_MODELS.google,
-        apiKeyPreview: aiSettings.google.apiKey 
-          ? `${aiSettings.google.apiKey.substring(0, 7)}...${aiSettings.google.apiKey.slice(-4)}`
-          : null
-      },
-      defaultProvider: aiSettings.defaultProvider
-    }
-  });
+app.get('/api/settings', (req, res, next) => {
+  try {
+    res.json({
+      success: true,
+      data: {
+        openai: {
+          configured: !!aiSettings.openai.apiKey,
+          enabled: aiSettings.openai.enabled,
+          model: aiSettings.openai.model || 'gpt-4o-mini',
+          availableModels: AVAILABLE_MODELS.openai,
+          apiKeyPreview: aiSettings.openai.apiKey 
+            ? `${aiSettings.openai.apiKey.substring(0, 7)}...${aiSettings.openai.apiKey.slice(-4)}`
+            : null
+        },
+        google: {
+          configured: !!aiSettings.google.apiKey,
+          enabled: aiSettings.google.enabled,
+          model: aiSettings.google.model || 'gemini-2.0-flash',
+          availableModels: AVAILABLE_MODELS.google,
+          apiKeyPreview: aiSettings.google.apiKey 
+            ? `${aiSettings.google.apiKey.substring(0, 7)}...${aiSettings.google.apiKey.slice(-4)}`
+            : null
+        },
+        defaultProvider: aiSettings.defaultProvider
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching settings:', error);
+    next(error);
+  }
 });
 
 // PUT /api/settings - Update AI settings
@@ -2764,25 +2781,30 @@ app.post('/api/settings/test', async (req, res) => {
 // =====================================================
 
 // GET /api/settings/dropbox - Get Dropbox settings
-app.get('/api/settings/dropbox', (req, res) => {
-  const dropbox = aiSettings.dropbox || {
-    accessToken: '',
-    enabled: false,
-    rootPath: '/ENTITIES/TASK_MANAGERS/RESEARCHES',
-    configured: false
-  };
-  
-  res.json({
-    success: true,
-    data: {
-      accessToken: dropbox.accessToken 
-        ? `...${dropbox.accessToken.slice(-8)}`  // Only show last 8 chars for security
-        : '',
-      enabled: dropbox.enabled,
-      rootPath: dropbox.rootPath,
-      configured: !!dropbox.accessToken
-    }
-  });
+app.get('/api/settings/dropbox', (req, res, next) => {
+  try {
+    const dropbox = aiSettings.dropbox || {
+      accessToken: '',
+      enabled: false,
+      rootPath: '/ENTITIES/TASK_MANAGERS/RESEARCHES',
+      configured: false
+    };
+    
+    res.json({
+      success: true,
+      data: {
+        accessToken: dropbox.accessToken 
+          ? `...${dropbox.accessToken.slice(-8)}`  // Only show last 8 chars for security
+          : '',
+        enabled: dropbox.enabled,
+        rootPath: dropbox.rootPath,
+        configured: !!dropbox.accessToken
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching Dropbox settings:', error);
+    next(error);
+  }
 });
 
 // PUT /api/settings/dropbox - Update Dropbox settings
@@ -2966,6 +2988,60 @@ app.post('/api/settings/dropbox/test', async (req, res) => {
       error: `Connection failed: ${error.message}` 
     });
   }
+});
+
+// =====================================================
+// ERROR HANDLING MIDDLEWARE
+// =====================================================
+
+// 404 handler for unknown routes
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    error: `Route not found: ${req.method} ${req.path}`
+  });
+});
+
+// Global error handler - must be last middleware
+app.use((err, req, res, next) => {
+  console.error('❌ Unhandled error:', err);
+  
+  // Don't send response if headers already sent
+  if (res.headersSent) {
+    return next(err);
+  }
+  
+  // Ensure Content-Type is set to JSON
+  res.setHeader('Content-Type', 'application/json');
+  
+  // Handle Prisma errors
+  if (err.code === 'P1001' || err.code === 'P1002' || err.code === 'P1003') {
+    return res.status(503).json({
+      success: false,
+      error: 'Database connection error. Please check if PostgreSQL is running.',
+      code: err.code
+    });
+  }
+  
+  // Handle Prisma validation errors
+  if (err.code && err.code.startsWith('P')) {
+    return res.status(400).json({
+      success: false,
+      error: err.message || 'Database operation failed',
+      code: err.code
+    });
+  }
+  
+  // Handle other errors
+  const statusCode = err.status || err.statusCode || 500;
+  res.status(statusCode).json({
+    success: false,
+    error: err.message || 'Internal server error',
+    ...(process.env.NODE_ENV === 'development' && { 
+      stack: err.stack,
+      code: err.code 
+    })
+  });
 });
 
 // =====================================================

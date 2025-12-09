@@ -906,3 +906,6 @@ const completion = await openai.chat.completions.create({
 
 **Последнее обновление:** 2025-12-02
 
+
+
+
