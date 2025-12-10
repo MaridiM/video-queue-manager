@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { VideoQueueTable } from "./components/VideoQueueTable";
 import { VideoQueueCatalog } from "./pages/VideoQueueCatalog";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { DashboardStats } from "./components/DashboardStats";
 import { UploadTranscriptionScreen } from "./components/UploadTranscriptionScreen";
 import { CostTrackerWidget } from "./components/CostTrackerWidget";
@@ -185,7 +186,11 @@ export default function App() {
               </div>
             </div>
           )}
-          {currentView === "queue" && <VideoQueueCatalog />}
+          {currentView === "queue" && (
+            <ErrorBoundary>
+              <VideoQueueCatalog />
+            </ErrorBoundary>
+          )}
           {currentView === "import" && <BulkVideoImport />}
           {currentView === "upload" && <UploadTranscriptionScreen />}
           {currentView === "extraction" && <EntityExtractionViewer />}

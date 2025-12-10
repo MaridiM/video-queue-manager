@@ -14,6 +14,11 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  CloudDownload,
+  FileSpreadsheet,
+  FileJson,
+  FileText,
+  ChevronDown,
 } from 'lucide-react';
 
 import { videoQueueAPI, type VideoQueueAPI } from '../lib/api';
@@ -61,10 +66,12 @@ export function VideoQueueCatalog() {
   const [data, setData] = useState<VideoQueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Ensure data is always an array
+  const safeData = Array.isArray(data) ? data : [];
 
   // View state
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [globalFilter, setGlobalFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [departmentFilter, setDepartmentFilter] = useState<string>('');
@@ -79,6 +86,12 @@ export function VideoQueueCatalog() {
   const [editingVideo, setEditingVideo] = useState<VideoQueueItem | null>(null);
   const [deletingVideo, setDeletingVideo] = useState<VideoQueueItem | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Export menu state
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  
+  // Sync state
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Form
   const form = useForm<VideoFormValues>({
@@ -153,24 +166,18 @@ export function VideoQueueCatalog() {
   };
 
   useEffect(() => {
-    loadData();
+    loadData().catch((err) => {
+      console.error('Failed to load data in useEffect:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load data');
+      setLoading(false);
+    });
   }, []);
-
-  // Categories
-  const categories = [
-    { id: 'all', label: 'All', icon: '📚' },
-    { id: 'DEV', label: 'Developers', icon: '💻' },
-    { id: 'DGN', label: 'Designers', icon: '🎨' },
-    { id: 'MKT', label: 'Marketers', icon: '📢' },
-    { id: 'VID', label: 'Videographers', icon: '🎥' },
-    { id: 'SMM', label: 'Social Media', icon: '📱' },
-    { id: 'AID', label: 'AI & Data', icon: '🤖' },
-  ];
 
   // Filter data
   const filteredData = useMemo(() => {
-    return data.filter((item) => {
-      if (selectedCategory !== 'all' && item.department !== selectedCategory) return false;
+    if (!safeData || safeData.length === 0) return [];
+    return safeData.filter((item) => {
+      if (!item) return false;
       if (statusFilter && item.status !== statusFilter) return false;
       if (departmentFilter && item.department !== departmentFilter) return false;
       if (globalFilter) {
@@ -183,11 +190,12 @@ export function VideoQueueCatalog() {
       }
       return true;
     });
-  }, [data, selectedCategory, statusFilter, departmentFilter, globalFilter]);
+  }, [safeData, statusFilter, departmentFilter, globalFilter]);
 
   // Pagination
-  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+  const totalPages = Math.ceil((filteredData?.length || 0) / itemsPerPage);
   const paginatedData = useMemo(() => {
+    if (!filteredData || filteredData.length === 0) return [];
     const start = (currentPage - 1) * itemsPerPage;
     return filteredData.slice(start, start + itemsPerPage);
   }, [filteredData, currentPage, itemsPerPage]);
@@ -195,15 +203,36 @@ export function VideoQueueCatalog() {
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedCategory, statusFilter, departmentFilter, globalFilter, viewMode]);
+  }, [statusFilter, departmentFilter, globalFilter, viewMode]);
 
-  // Stats
-  const stats = useMemo(() => ({
-    total: data.length,
-    pending: data.filter((v) => v.status === 'pending').length,
-    inProgress: data.filter((v) => ['selected', 'transcribing', 'processing'].includes(v.status)).length,
-    complete: data.filter((v) => v.status === 'complete').length,
-  }), [data]);
+  // Sync from CSV (Dropbox)
+  const handleSyncFromCSV = async () => {
+    setIsSyncing(true);
+    try {
+      const result = await videoQueueAPI.syncFromCSV();
+      if (result.success && result.data) {
+        await loadData();
+      } else {
+        setError(result.error || 'Failed to sync from CSV');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to sync from CSV');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Export handler
+  const handleExport = (format: 'csv' | 'json' | 'md') => {
+    const url = videoQueueAPI.getExportUrl(format);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = '';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setShowExportMenu(false);
+  };
 
   // Form handlers
   const openAdd = () => {
@@ -335,7 +364,6 @@ export function VideoQueueCatalog() {
     setGlobalFilter('');
     setStatusFilter('');
     setDepartmentFilter('');
-    setSelectedCategory('all');
   };
 
   const exportCSV = () => {
@@ -393,8 +421,9 @@ export function VideoQueueCatalog() {
         </div>
       )}
 
-      {/* View Toggle */}
-      <div className="flex items-center justify-between">
+      {/* View Toggle & Search & Actions */}
+      <div className="flex items-center gap-4 flex-wrap">
+        {/* View Toggle */}
         <div className="flex items-center bg-[var(--background-secondary)] rounded-[8px] p-1">
           <button
             onClick={() => setViewMode('grid')}
@@ -413,176 +442,173 @@ export function VideoQueueCatalog() {
             <List className="w-4 h-4" />
           </button>
         </div>
-        <span className="text-sm text-[var(--text-secondary)]">
-          {viewMode === 'grid' ? 'Grid View' : 'Table View'}
-        </span>
-      </div>
 
-      {/* Grid View Controls - only show when in grid mode */}
-      {viewMode === 'grid' && (
-        <>
-          {/* Stats Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {[
-              { label: 'Total Videos', value: stats.total, color: 'blue' },
-              { label: 'Pending', value: stats.pending, color: 'gray' },
-              { label: 'In Progress', value: stats.inProgress, color: 'sky' },
-              { label: 'Completed', value: stats.complete, color: 'emerald' },
-            ].map((stat) => (
-              <div key={stat.label} className="bg-[var(--background-paper)] rounded-[12px] border border-[var(--border-default)] p-4 shadow-sm">
-                <p className="text-sm font-medium text-[var(--text-secondary)]">{stat.label}</p>
-                <p className="text-2xl font-bold text-[var(--text-primary)] mt-1">{stat.value}</p>
-              </div>
-            ))}
-          </div>
-
-          {/* Actions & Filters */}
-          <div className="bg-[var(--background-paper)] rounded-[12px] border border-[var(--border-default)] p-4 shadow-sm">
-            <div className="flex flex-col lg:flex-row gap-4 justify-between items-start lg:items-center">
-              {/* Search */}
-              <div className="relative w-full lg:w-96">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)]" />
-                <Input
-                  type="text"
-                  placeholder="Search videos or channels..."
-                  value={globalFilter}
-                  onChange={(e) => setGlobalFilter(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-
-              {/* Add Button */}
-              <Button onClick={openAdd}>
-                <Plus className="w-4 h-4 mr-2" />
-                Add Video
-              </Button>
-            </div>
-
-            {/* Filters Row */}
-            <div className="flex flex-wrap gap-4 mt-4 pt-4 border-t border-[var(--border-default)] items-end">
-              <div className="w-40">
-                <label className="text-xs font-medium text-[var(--text-secondary)] mb-1 block">Status</label>
-                <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-                  <option value="">All Statuses</option>
-                  {FILTER_OPTIONS.status.map((s) => (
-                    <option key={s.value} value={s.value}>{s.label}</option>
-                  ))}
-                </Select>
-              </div>
-
-              <div className="w-44">
-                <label className="text-xs font-medium text-[var(--text-secondary)] mb-1 block">Department</label>
-                <Select value={departmentFilter} onChange={(e) => setDepartmentFilter(e.target.value)}>
-                  <option value="">All Departments</option>
-                  {FILTER_OPTIONS.department.map((d) => (
-                    <option key={d.value} value={d.value}>{d.label}</option>
-                  ))}
-                </Select>
-              </div>
-
-              <div className="flex gap-2 ml-auto">
-                <Button variant="ghost" size="sm" onClick={resetFilters}>
-                  <X className="w-4 h-4 mr-1" />
-                  Reset
-                </Button>
-                <Button variant="outline" size="sm" onClick={loadData}>
-                  <RefreshCw className="w-4 h-4 mr-1" />
-                  Refresh
-                </Button>
-                <Button variant="outline" size="sm" onClick={exportCSV}>
-                  <Download className="w-4 h-4 mr-1" />
-                  Export
-                </Button>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Category Filters (for Grid view) */}
-      {viewMode === 'grid' && (
-        <div className="flex items-center gap-3 overflow-x-auto pb-2 scrollbar-hide">
-          {categories.map((cat) => {
-            const count = cat.id === 'all' ? data.length : data.filter((v) => v.department === cat.id).length;
-            const isActive = selectedCategory === cat.id;
-            const deptColor = cat.id !== 'all' ? getDepartmentColor(cat.id) : null;
-
-            return (
-              <button
-                key={cat.id}
-                onClick={() => setSelectedCategory(cat.id)}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-full font-medium whitespace-nowrap transition-all duration-200 ${
-                  isActive
-                    ? deptColor
-                      ? 'text-white shadow-md'
-                      : 'bg-[var(--primary-default)] text-white shadow-md'
-                    : 'bg-white border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--background-hover)] hover:text-[var(--text-primary)]'
-                }`}
-                style={isActive && deptColor ? { backgroundColor: deptColor.default, boxShadow: `0 4px 12px ${deptColor.background}` } : {}}
-              >
-                <span className="text-lg">{cat.icon}</span>
-                <span>{cat.label}</span>
-                <span className={`text-xs px-2 py-0.5 rounded-full ${isActive ? 'bg-white/20 text-white' : 'bg-[var(--secondary-100)] text-[var(--text-secondary)]'}`}>
-                  {count}
-                </span>
-              </button>
-            );
-          })}
+        {/* Search */}
+        <div className="relative flex-1 min-w-[200px] max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)]" />
+          <Input
+            type="text"
+            placeholder="Search videos or channels..."
+            value={globalFilter}
+            onChange={(e) => setGlobalFilter(e.target.value)}
+            className="pl-10"
+          />
         </div>
-      )}
+
+        {/* Action Buttons */}
+        <div className="flex items-center gap-2">
+          {/* Refresh */}
+          <Button variant="outline" size="sm" onClick={loadData} disabled={loading}>
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </Button>
+          
+          {/* Export Dropdown */}
+          <div className="relative">
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => setShowExportMenu(!showExportMenu)}
+              className="gap-1"
+            >
+              <Download className="w-4 h-4" />
+              Export
+              <ChevronDown className="w-3 h-3" />
+            </Button>
+            {showExportMenu && (
+              <>
+                <div 
+                  className="fixed inset-0 z-10" 
+                  onClick={() => setShowExportMenu(false)} 
+                />
+                <div className="absolute right-0 mt-1 w-44 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                  <button
+                    onClick={() => handleExport('csv')}
+                    className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                  >
+                    <FileSpreadsheet size={16} className="text-emerald-600" />
+                    Export as CSV
+                  </button>
+                  <button
+                    onClick={() => handleExport('json')}
+                    className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                  >
+                    <FileJson size={16} className="text-blue-600" />
+                    Export as JSON
+                  </button>
+                  <button
+                    onClick={() => handleExport('md')}
+                    className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                  >
+                    <FileText size={16} className="text-purple-600" />
+                    Export as Markdown
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+          
+          {/* Sync from Dropbox */}
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={handleSyncFromCSV} 
+            disabled={isSyncing}
+            title="Import from Video_Queue_Master.csv in Dropbox"
+          >
+            {isSyncing ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                Syncing...
+              </>
+            ) : (
+              <>
+                <CloudDownload className="w-4 h-4 mr-1" />
+                Sync
+              </>
+            )}
+          </Button>
+          
+          {/* Add Video */}
+          <Button onClick={openAdd}>
+            <Plus className="w-4 h-4 mr-2" />
+            Add Video
+          </Button>
+        </div>
+      </div>
 
       {/* Content */}
       {viewMode === 'table' ? (
         /* Table View - uses its own data management */
         <VideoQueueTable />
-      ) : filteredData.length === 0 ? (
-        <div className="bg-white rounded-[12px] border border-[var(--border-default)] p-16 text-center">
-          <Search className="w-16 h-16 text-[var(--text-tertiary)] mx-auto mb-4" />
-          <h3 className="text-xl font-semibold text-[var(--text-primary)] mb-2">No videos found</h3>
-          <p className="text-[var(--text-secondary)] mb-6">
-            {globalFilter || statusFilter || departmentFilter
-              ? 'Try adjusting your filters or search query.'
-              : 'Start by adding videos to your catalog.'}
-          </p>
-          <Button onClick={openAdd}>
-            <Plus className="w-4 h-4 mr-2" />
-            Add Your First Video
-          </Button>
-        </div>
       ) : (
         <>
-          {/* Grid View */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
-            {paginatedData.map((video) => (
-              <VideoCard key={video.id} video={video} onEdit={openEdit} onDelete={openDelete} />
-            ))}
-          </div>
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-4 pt-4">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-              >
-                <ChevronLeft className="w-4 h-4" />
-                Previous
-              </Button>
-              <span className="text-sm text-[var(--text-secondary)]">
-                Page {currentPage} of {totalPages}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-              >
-                Next
-                <ChevronRight className="w-4 h-4" />
+          {/* Grid View Content */}
+          {!filteredData || filteredData.length === 0 ? (
+            <div className="bg-white rounded-[12px] border border-[var(--border-default)] p-16 text-center">
+              <Search className="w-16 h-16 text-[var(--text-tertiary)] mx-auto mb-4" />
+              <h3 className="text-xl font-semibold text-[var(--text-primary)] mb-2">No videos found</h3>
+              <p className="text-[var(--text-secondary)] mb-6">
+                {globalFilter || statusFilter || departmentFilter
+                  ? 'Try adjusting your filters or search query.'
+                  : 'Start by adding videos to your catalog.'}
+              </p>
+              <Button onClick={openAdd}>
+                <Plus className="w-4 h-4 mr-2" />
+                Add Your First Video
               </Button>
             </div>
+          ) : (
+            <>
+              {/* Grid View */}
+              {paginatedData && paginatedData.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
+                  {paginatedData.map((video) => (
+                    <VideoCard key={video.id} video={video} onEdit={openEdit} onDelete={openDelete} />
+                  ))}
+                </div>
+              ) : (
+                <div className="bg-white rounded-[12px] border border-[var(--border-default)] p-16 text-center">
+                  <Search className="w-16 h-16 text-[var(--text-tertiary)] mx-auto mb-4" />
+                  <h3 className="text-xl font-semibold text-[var(--text-primary)] mb-2">No videos found</h3>
+                  <p className="text-[var(--text-secondary)] mb-6">
+                    {globalFilter || statusFilter || departmentFilter
+                      ? 'Try adjusting your filters or search query.'
+                      : 'Start by adding videos to your catalog.'}
+                  </p>
+                  <Button onClick={openAdd}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Your First Video
+                  </Button>
+                </div>
+              )}
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-4 pt-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                    Previous
+                  </Button>
+                  <span className="text-sm text-[var(--text-secondary)]">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                  >
+                    Next
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              )}
+            </>
           )}
         </>
       )}
@@ -713,15 +739,3 @@ export function VideoQueueCatalog() {
   );
 }
 
-// Helper function to get department color
-function getDepartmentColor(dept: string): { default: string; background: string } | null {
-  const colors: Record<string, { default: string; background: string }> = {
-    DEV: { default: '#147857', background: 'rgba(20, 120, 87, 0.15)' },
-    DGN: { default: '#6D28D9', background: 'rgba(109, 40, 217, 0.15)' },
-    MKT: { default: '#EC4899', background: 'rgba(236, 72, 153, 0.15)' },
-    VID: { default: '#F97316', background: 'rgba(249, 115, 22, 0.15)' },
-    SMM: { default: '#4B5563', background: 'rgba(75, 85, 99, 0.15)' },
-    AID: { default: '#4B5563', background: 'rgba(75, 85, 99, 0.15)' },
-  };
-  return colors[dept] || null;
-}

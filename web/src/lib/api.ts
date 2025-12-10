@@ -431,6 +431,11 @@ export interface TestConnectionResult {
   response: string;
 }
 
+export interface GoogleModelsResponse {
+  models: AIModelInfo[];
+  count: number;
+}
+
 export const settingsAPI = {
   // Get current AI settings
   get: () => fetchAPI<AISettings>('/api/settings'),
@@ -446,6 +451,16 @@ export const settingsAPI = {
     fetchAPI<TestConnectionResult>('/api/settings/test', {
       method: 'POST',
       body: JSON.stringify({ provider, apiKey }),
+    }),
+
+  // Get available Google AI models from API
+  getGoogleModels: (apiKey?: string) => 
+    fetchAPI<GoogleModelsResponse>(`/api/settings/google/models${apiKey ? `?apiKey=${encodeURIComponent(apiKey)}` : ''}`),
+
+  // Refresh Google AI models list using saved API key
+  refreshGoogleModels: () => 
+    fetchAPI<GoogleModelsResponse>('/api/settings/google/models/refresh', {
+      method: 'POST',
     }),
 };
 

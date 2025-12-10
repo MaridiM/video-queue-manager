@@ -38,6 +38,7 @@ interface ProviderCardProps {
   onSaveKey: (key: string) => Promise<void>;
   onTest: (key: string) => Promise<boolean>;
   onModelChange: (model: string) => Promise<void>;
+  onRefreshModels?: () => Promise<void>;
   gradientFrom: string;
   gradientTo: string;
 }
@@ -58,6 +59,7 @@ function ProviderCard({
   onSaveKey,
   onTest,
   onModelChange,
+  onRefreshModels,
   gradientFrom,
   gradientTo,
 }: ProviderCardProps) {
@@ -69,14 +71,27 @@ function ProviderCard({
   const [testResult, setTestResult] = useState<'success' | 'error' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isChangingModel, setIsChangingModel] = useState(false);
+  const [isRefreshingModels, setIsRefreshingModels] = useState(false);
 
   const handleSave = async () => {
-    if (!apiKey.trim()) return;
+    // Clean the API key: trim and remove quotes
+    const cleanedKey = apiKey.trim().replace(/^["']|["']$/g, '');
+    
+    if (!cleanedKey) {
+      setError('API ключ не может быть пустым');
+      return;
+    }
+    
+    // Validate Google API key format
+    if (provider === 'google' && !cleanedKey.startsWith('AIza')) {
+      setError('Неверный формат Google AI API ключа. Ключ должен начинаться с "AIza".');
+      return;
+    }
     
     setIsSaving(true);
     setError(null);
     try {
-      await onSaveKey(apiKey);
+      await onSaveKey(cleanedKey);
       setIsEditing(false);
       setApiKey('');
     } catch (e) {
@@ -86,15 +101,33 @@ function ProviderCard({
   };
 
   const handleTest = async () => {
-    const keyToTest = apiKey.trim() || (configured ? 'existing' : '');
-    if (!keyToTest && !configured) return;
+    // Clean the API key: trim and remove quotes
+    const cleanedKey = apiKey.trim().replace(/^["']|["']$/g, '');
+    
+    // If no key entered and not configured, show error
+    if (!cleanedKey && !configured) {
+      setError('Введите API ключ для тестирования');
+      return;
+    }
+    
+    // If configured but no new key entered, we can't test (we don't have the full key)
+    if (!cleanedKey && configured) {
+      setError('Введите новый API ключ для тестирования');
+      return;
+    }
+    
+    // Validate Google API key format
+    if (provider === 'google' && !cleanedKey.startsWith('AIza')) {
+      setError('Неверный формат Google AI API ключа. Ключ должен начинаться с "AIza".');
+      return;
+    }
     
     setIsTesting(true);
     setTestResult(null);
     setError(null);
     
     try {
-      const success = await onTest(apiKey.trim() || '');
+      const success = await onTest(cleanedKey);
       setTestResult(success ? 'success' : 'error');
     } catch (e) {
       setTestResult('error');
@@ -173,9 +206,38 @@ function ProviderCard({
         {/* Model Selection - only show when configured */}
         {configured && availableModels && availableModels.length > 0 && (
           <div className="mb-3 sm:mb-4">
-            <label className="block text-xs sm:text-sm font-medium text-slate-700 mb-1.5">
-              Модель
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs sm:text-sm font-medium text-slate-700">
+                Модель {availableModels.length > 0 && (
+                  <span className="text-slate-500 font-normal ml-1">
+                    ({availableModels.length} {availableModels.length === 1 ? 'доступна' : 'доступно'})
+                  </span>
+                )}
+              </label>
+              {provider === 'google' && onRefreshModels && (
+                <button
+                  onClick={async () => {
+                    setIsRefreshingModels(true);
+                    setError(null);
+                    try {
+                      await onRefreshModels();
+                    } catch (err) {
+                      const errorMessage = err instanceof Error ? err.message : 'Ошибка обновления списка моделей';
+                      setError(errorMessage);
+                      console.error('Error refreshing models:', err);
+                    } finally {
+                      setIsRefreshingModels(false);
+                    }
+                  }}
+                  disabled={isRefreshingModels}
+                  className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 disabled:opacity-50"
+                  title="Обновить список моделей из Google AI API"
+                >
+                  <RefreshCw size={12} className={isRefreshingModels ? 'animate-spin' : ''} />
+                  <span>Обновить</span>
+                </button>
+              )}
+            </div>
             <div className="relative">
               <select
                 value={model}
@@ -670,7 +732,25 @@ export function Settings() {
     
     if (result.success && result.data) {
       setSettings(result.data);
-      showSaveMessage('API ключ сохранён');
+      
+      // If Google AI, fetch available models from API
+      if (provider === 'google' && apiKey) {
+        try {
+          const modelsResult = await settingsAPI.getGoogleModels(apiKey);
+          if (modelsResult.success && modelsResult.data) {
+            // Reload settings to get updated models list
+            await loadSettings();
+            showSaveMessage(`API ключ сохранён. Загружено ${modelsResult.data.count} моделей`);
+          } else {
+            showSaveMessage('API ключ сохранён');
+          }
+        } catch (err) {
+          console.warn('Could not fetch Google AI models:', err);
+          showSaveMessage('API ключ сохранён');
+        }
+      } else {
+        showSaveMessage('API ключ сохранён');
+      }
     } else {
       throw new Error(result.error || 'Ошибка сохранения');
     }
@@ -699,6 +779,25 @@ export function Settings() {
     if (result.success && result.data) {
       setSettings(result.data);
       showSaveMessage(`Модель изменена на ${model}`);
+    }
+  };
+
+  const handleRefreshGoogleModels = async () => {
+    if (!settings?.google.configured) {
+      throw new Error('API ключ не настроен');
+    }
+    
+    try {
+      const result = await settingsAPI.refreshGoogleModels();
+      if (result.success && result.data) {
+        // Reload settings to get updated models list
+        await loadSettings();
+        showSaveMessage(`Список моделей обновлён. Загружено ${result.data.count} моделей`);
+      } else {
+        throw new Error(result.error || 'Ошибка обновления моделей');
+      }
+    } catch (err) {
+      throw new Error(err instanceof Error ? err.message : 'Ошибка обновления моделей');
     }
   };
 
@@ -868,6 +967,7 @@ export function Settings() {
                 onSaveKey={(key) => handleSaveKey('google', key)}
                 onTest={(key) => handleTest('google', key)}
                 onModelChange={(model) => handleModelChange('google', model)}
+                onRefreshModels={handleRefreshGoogleModels}
                 gradientFrom="from-blue-500"
                 gradientTo="to-cyan-500"
               />

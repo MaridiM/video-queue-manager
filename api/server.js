@@ -24,11 +24,15 @@ const __dirname_temp = path.dirname(__filename_temp);
 const settingsFilePath = path.join(__dirname_temp, 'settings.json');
 
 // Available models for each provider
+// Note: Models are ordered by preference - models with better free tier limits first
 const AVAILABLE_MODELS = {
   google: [
-    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', description: 'Новейшая, самая быстрая' },
-    { id: 'gemini-1.5-flash-latest', name: 'Gemini 1.5 Flash', description: 'Быстрая и экономичная' },
-    { id: 'gemini-1.5-pro-latest', name: 'Gemini 1.5 Pro', description: 'Высокое качество, дороже' },
+    { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', description: 'Новейшая, лучшие лимиты для free tier' },
+    { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite', description: 'Легкая версия, хорошие лимиты' },
+    { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', description: 'Стабильная, проверенная модель' },
+    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', description: 'Быстрая, может иметь ограничения free tier' },
+    { id: 'gemini-1.5-flash-latest', name: 'Gemini 1.5 Flash Latest', description: 'Последняя версия 1.5 Flash' },
+    { id: 'gemini-1.5-pro-latest', name: 'Gemini 1.5 Pro', description: 'Высокое качество, может иметь ограничения' },
   ],
   openai: [
     { id: 'gpt-4o-mini', name: 'GPT-4o Mini', description: 'Быстрая и экономичная' },
@@ -42,7 +46,7 @@ function loadSettings() {
   // Default settings (from env or empty)
   const defaults = {
     openai: { apiKey: process.env.OPENAI_API_KEY || '', enabled: !!process.env.OPENAI_API_KEY, model: 'gpt-4o-mini' },
-    google: { apiKey: process.env.GOOGLE_AI_API_KEY || '', enabled: !!process.env.GOOGLE_AI_API_KEY, model: 'gemini-2.0-flash' },
+    google: { apiKey: process.env.GOOGLE_AI_API_KEY || '', enabled: !!process.env.GOOGLE_AI_API_KEY, model: 'gemini-2.5-flash' },
     defaultProvider: 'google',
     dropbox: {
       accessToken: process.env.DROPBOX_ACCESS_TOKEN || '',
@@ -74,7 +78,7 @@ function loadSettings() {
       
       // Ensure model field exists (migration for old settings)
       if (!merged.google.model) {
-        merged.google.model = 'gemini-2.0-flash';
+        merged.google.model = 'gemini-2.5-flash'; // Default to model with better free tier support
       }
       if (!merged.openai.model) {
         merged.openai.model = 'gpt-4o-mini';
@@ -2210,12 +2214,38 @@ Process the transcript above and output a complete JSON object matching transcri
     const maxRetries = 3;
     let retryCount = 0;
     let lastError = null;
+    let googleModel = null; // Declare outside to use in catch block
+    let fullPrompt = `${systemPrompt}\n\n${userPrompt}`; // Declare outside to use in catch block
     
     while (retryCount <= maxRetries) {
       try {
         if (actualProvider === 'google') {
           // ========== GOOGLE GEMINI ==========
-          const googleModel = aiSettings.google.model || 'gemini-2.0-flash';
+          googleModel = aiSettings.google.model || 'gemini-2.5-flash'; // Default to model with better free tier limits
+          
+          // Check if the selected model is in available models list
+          const availableModelIds = AVAILABLE_MODELS.google.map(m => m.id);
+          if (!availableModelIds.includes(googleModel)) {
+            console.warn(`⚠️ Selected model "${googleModel}" not in available models list, trying to find alternative...`);
+            // Prefer models with better free tier support (2.5-flash, 2.5-flash-lite, 1.5-flash)
+            const alternativeModel = AVAILABLE_MODELS.google.find(m => 
+              m.id.includes('2.5-flash')
+            ) || AVAILABLE_MODELS.google.find(m => 
+              m.id === 'gemini-1.5-flash'
+            ) || AVAILABLE_MODELS.google.find(m => 
+              m.id.includes('flash')
+            ) || AVAILABLE_MODELS.google[0];
+            
+            if (alternativeModel) {
+              console.log(`   ↳ Using alternative model: ${alternativeModel.id}`);
+              googleModel = alternativeModel.id;
+            } else {
+              // Fallback to safe default with good free tier support
+              googleModel = 'gemini-2.5-flash';
+              console.log(`   ↳ Using fallback model: ${googleModel}`);
+            }
+          }
+          
           const model = googleAI.getGenerativeModel({ 
             model: googleModel,
             generationConfig: {
@@ -2223,8 +2253,6 @@ Process the transcript above and output a complete JSON object matching transcri
               maxOutputTokens: 32000,
             }
           });
-          
-          const fullPrompt = `${systemPrompt}\n\n${userPrompt}`;
           
           if (retryCount > 0) {
             const delayMs = Math.min(1000 * Math.pow(2, retryCount - 1), 10000); // Exponential backoff, max 10s
@@ -2301,6 +2329,85 @@ Process the transcript above and output a complete JSON object matching transcri
       } catch (aiError) {
         lastError = aiError;
         const errorMessage = aiError.message || '';
+        
+        // Check if model not found (404) or quota exceeded with limit 0 (429) and we're using Google AI
+        const isModelNotFound = errorMessage.includes('404') && 
+                               errorMessage.includes('not found') &&
+                               actualProvider === 'google' &&
+                               retryCount === 0;
+        
+        const isQuotaExceededZeroLimit = errorMessage.includes('429') && 
+                                         errorMessage.includes('limit: 0') &&
+                                         errorMessage.includes('free_tier') &&
+                                         actualProvider === 'google' &&
+                                         retryCount === 0;
+        
+        if ((isModelNotFound || isQuotaExceededZeroLimit) && AVAILABLE_MODELS.google.length > 0) {
+          const errorType = isModelNotFound ? 'not found' : 'quota limit 0 (free tier exhausted)';
+          console.warn(`   ⚠️ Model "${googleModel}" ${errorType}, trying alternative models with better free tier support...`);
+          
+          // Try alternative models - prioritize models with better free tier limits
+          const alternativeModels = AVAILABLE_MODELS.google
+            .filter(m => m.id !== googleModel)
+            .sort((a, b) => {
+              // Prefer 2.5-flash models (best free tier support)
+              if (a.id.includes('2.5-flash') && !b.id.includes('2.5-flash')) return -1;
+              if (!a.id.includes('2.5-flash') && b.id.includes('2.5-flash')) return 1;
+              // Then prefer 1.5-flash (stable)
+              if (a.id.includes('1.5-flash') && !b.id.includes('1.5-flash')) return -1;
+              if (!a.id.includes('1.5-flash') && b.id.includes('1.5-flash')) return 1;
+              // Then other flash models
+              if (a.id.includes('flash') && !b.id.includes('flash')) return -1;
+              if (!a.id.includes('flash') && b.id.includes('flash')) return 1;
+              return 0;
+            });
+          
+          for (const altModel of alternativeModels.slice(0, 3)) { // Try up to 3 alternatives
+            try {
+              console.log(`   ↳ Trying alternative model: ${altModel.id} (better free tier support)`);
+              const altModelInstance = googleAI.getGenerativeModel({ 
+                model: altModel.id,
+                generationConfig: {
+                  temperature: 0.3,
+                  maxOutputTokens: 32000,
+                }
+              });
+              const altResult = await altModelInstance.generateContent(fullPrompt);
+              
+              // Extract response
+              if (altResult.response && typeof altResult.response.text === 'function') {
+                aiResponse = await altResult.response.text();
+              } else if (altResult.response?.text) {
+                aiResponse = altResult.response.text;
+              } else if (altResult.response?.candidates?.[0]?.content?.parts?.[0]?.text) {
+                aiResponse = altResult.response.candidates[0].content.parts[0].text;
+              }
+              
+              if (aiResponse && aiResponse.trim().length > 0) {
+                modelUsed = altModel.id;
+                console.log(`   ✅ Successfully used alternative model: ${altModel.id}`);
+                break; // Success, exit retry loop
+              }
+            } catch (altError) {
+              const altErrorMessage = altError.message || '';
+              // If this alternative also has quota issues, try next one
+              if (altErrorMessage.includes('429') && altErrorMessage.includes('limit: 0')) {
+                console.warn(`   ⚠️ Alternative model ${altModel.id} also has quota limit 0, trying next...`);
+              } else {
+                console.warn(`   ⚠️ Alternative model ${altModel.id} failed:`, altError.message);
+              }
+              continue; // Try next alternative
+            }
+          }
+          
+          // If we found an alternative, continue with success
+          if (aiResponse && aiResponse.trim().length > 0) {
+            break; // Success with alternative model
+          } else if (isQuotaExceededZeroLimit) {
+            // If all alternatives failed due to quota, provide helpful error message
+            throw new Error('Все доступные модели исчерпали лимиты бесплатного тарифа. Попробуйте позже или настройте биллинг в Google Cloud Console для увеличения лимитов.');
+          }
+        }
         
         // Check if it's a rate limit error and we can retry
         const isRateLimit = errorMessage.includes('429') || 
@@ -2614,7 +2721,7 @@ app.get('/api/transcription/status', (req, res) => {
       openAIConfigured: !!(aiSettings.openai.apiKey && aiSettings.openai.enabled),
       googleAIConfigured: !!(aiSettings.google.apiKey && aiSettings.google.enabled),
       defaultProvider: aiSettings.defaultProvider,
-      googleModel: aiSettings.google.model || 'gemini-2.0-flash',
+      googleModel: aiSettings.google.model || 'gemini-2.5-flash',
       openaiModel: aiSettings.openai.model || 'gpt-4o-mini'
     }
   });
@@ -2624,9 +2731,68 @@ app.get('/api/transcription/status', (req, res) => {
 // SETTINGS API
 // =====================================================
 
-// GET /api/settings - Get current AI settings (without exposing full API keys)
-app.get('/api/settings', (req, res, next) => {
+// Helper function to fetch and update Google AI models
+async function fetchGoogleAIModels(apiKey) {
+  if (!apiKey) {
+    return null;
+  }
+  
   try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Google AI API error: ${response.status} ${response.statusText}. ${errorText.substring(0, 200)}`);
+    }
+    
+    const data = await response.json();
+    
+    // Filter and format models (only Gemini models that support generateContent)
+    const models = (data.models || [])
+      .filter(model => {
+        // Only include models that support generateContent
+        const supportedMethods = model.supportedGenerationMethods || [];
+        return supportedMethods.includes('generateContent') && 
+               model.name && 
+               model.name.startsWith('models/gemini');
+      })
+      .map(model => ({
+        id: model.name.replace('models/', ''),
+        name: model.displayName || model.name.replace('models/', ''),
+        description: model.description || model.name.replace('models/', ''),
+        inputTokenLimit: model.inputTokenLimit,
+        outputTokenLimit: model.outputTokenLimit
+      }))
+      .sort((a, b) => {
+        // Sort by name for consistent ordering
+        return a.name.localeCompare(b.name);
+      });
+    
+    return models;
+  } catch (error) {
+    console.error('Error fetching Google AI models:', error);
+    throw error;
+  }
+}
+
+// GET /api/settings - Get current AI settings (without exposing full API keys)
+app.get('/api/settings', async (req, res, next) => {
+  try {
+    // If Google AI is configured but we only have default models, try to fetch from API
+    if (aiSettings.google.apiKey && AVAILABLE_MODELS.google.length <= 3) {
+      try {
+        const models = await fetchGoogleAIModels(aiSettings.google.apiKey);
+        if (models && models.length > 0) {
+          AVAILABLE_MODELS.google = models;
+          console.log(`✅ Auto-loaded ${models.length} Google AI models on settings request`);
+        }
+      } catch (err) {
+        // Silently fail, use existing models
+        console.debug('Could not auto-load Google AI models:', err.message);
+      }
+    }
+    
     res.json({
       success: true,
       data: {
@@ -2642,11 +2808,12 @@ app.get('/api/settings', (req, res, next) => {
         google: {
           configured: !!aiSettings.google.apiKey,
           enabled: aiSettings.google.enabled,
-          model: aiSettings.google.model || 'gemini-2.0-flash',
+          model: aiSettings.google.model || 'gemini-2.5-flash',
           availableModels: AVAILABLE_MODELS.google,
           apiKeyPreview: aiSettings.google.apiKey 
             ? `${aiSettings.google.apiKey.substring(0, 7)}...${aiSettings.google.apiKey.slice(-4)}`
-            : null
+            : null,
+          modelsLoadedFromAPI: AVAILABLE_MODELS.google.length > 3 // More than default 3 models means loaded from API
         },
         defaultProvider: aiSettings.defaultProvider
       }
@@ -2658,7 +2825,7 @@ app.get('/api/settings', (req, res, next) => {
 });
 
 // PUT /api/settings - Update AI settings
-app.put('/api/settings', (req, res) => {
+app.put('/api/settings', async (req, res) => {
   try {
     const { openai: openaiSettings, google: googleSettings, defaultProvider } = req.body;
     
@@ -2678,7 +2845,28 @@ app.put('/api/settings', (req, res) => {
     // Update Google AI settings
     if (googleSettings !== undefined) {
       if (googleSettings.apiKey !== undefined) {
-        aiSettings.google.apiKey = googleSettings.apiKey;
+        // Clean the API key: trim and remove quotes
+        let cleanedKey = googleSettings.apiKey.trim().replace(/^["']|["']$/g, '');
+        aiSettings.google.apiKey = cleanedKey;
+        
+        // When API key is updated, try to fetch available models
+        if (cleanedKey) {
+          // Validate Google API key format
+          if (!cleanedKey.startsWith('AIza')) {
+            console.warn('⚠️ Google API key format seems invalid (should start with "AIza")');
+          }
+          
+          try {
+            const models = await fetchGoogleAIModels(cleanedKey);
+            // Update AVAILABLE_MODELS with fetched models
+            if (models && models.length > 0) {
+              AVAILABLE_MODELS.google = models;
+              console.log(`✅ Loaded ${models.length} Google AI models from API`);
+            }
+          } catch (err) {
+            console.warn('⚠️ Could not fetch Google AI models, using defaults:', err.message);
+          }
+        }
       }
       if (googleSettings.enabled !== undefined) {
         aiSettings.google.enabled = googleSettings.enabled;
@@ -2729,25 +2917,190 @@ app.put('/api/settings', (req, res) => {
   }
 });
 
+// GET /api/settings/google/models - Get available models from Google AI API
+app.get('/api/settings/google/models', async (req, res) => {
+  try {
+    const apiKey = req.query.apiKey || aiSettings.google.apiKey;
+    
+    if (!apiKey) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'API key is required. Provide it as query parameter or configure it in settings.' 
+      });
+    }
+    
+    const models = await fetchGoogleAIModels(apiKey);
+    
+    res.json({
+      success: true,
+      data: {
+        models,
+        count: models.length
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching Google AI models:', error);
+    res.status(400).json({ 
+      success: false, 
+      error: `Failed to fetch models: ${error.message}` 
+    });
+  }
+});
+
+// POST /api/settings/google/models/refresh - Refresh models list using saved API key
+app.post('/api/settings/google/models/refresh', async (req, res) => {
+  try {
+    if (!aiSettings.google.apiKey) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Google AI API key is not configured' 
+      });
+    }
+    
+    const models = await fetchGoogleAIModels(aiSettings.google.apiKey);
+    
+    // Update AVAILABLE_MODELS
+    if (models && models.length > 0) {
+      AVAILABLE_MODELS.google = models;
+      console.log(`✅ Refreshed Google AI models: ${models.length} models loaded`);
+    }
+    
+    res.json({
+      success: true,
+      data: {
+        models,
+        count: models.length
+      }
+    });
+  } catch (error) {
+    console.error('Error refreshing Google AI models:', error);
+    res.status(400).json({ 
+      success: false, 
+      error: `Failed to refresh models: ${error.message}` 
+    });
+  }
+});
+
 // POST /api/settings/test - Test AI provider connection
 app.post('/api/settings/test', async (req, res) => {
   try {
     const { provider, apiKey } = req.body;
     
-    if (provider === 'google') {
-      const testAI = new GoogleGenerativeAI(apiKey);
-      const model = testAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
-      const result = await model.generateContent('Say "Connection successful" in exactly those words.');
-      const response = result.response.text();
-      
-      res.json({
-        success: true,
-        data: {
-          provider: 'google',
-          model: 'gemini-1.5-flash-latest',
-          response: response.substring(0, 100)
-        }
+    // Validate input
+    if (!provider) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Provider is required. Use "google" or "openai".' 
       });
+    }
+    
+    if (!apiKey || !apiKey.trim()) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'API key is required and cannot be empty.' 
+      });
+    }
+    
+    // Clean and trim the API key
+    let trimmedApiKey = apiKey.trim();
+    
+    // Remove any quotes that might have been copied accidentally
+    trimmedApiKey = trimmedApiKey.replace(/^["']|["']$/g, '');
+    
+    // Validate Google API key format (should start with AIza)
+    if (provider === 'google') {
+      if (!trimmedApiKey.startsWith('AIza')) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Неверный формат Google AI API ключа. Ключ должен начинаться с "AIza". Убедитесь, что вы скопировали ключ полностью из Google AI Studio.' 
+        });
+      }
+      
+      // Check minimum length (Google API keys are typically 39 characters)
+      if (trimmedApiKey.length < 20) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Google AI API ключ слишком короткий. Убедитесь, что вы скопировали ключ полностью.' 
+        });
+      }
+    }
+    
+    if (provider === 'google') {
+      const testAI = new GoogleGenerativeAI(trimmedApiKey);
+      
+      // Try to get available models first to use a valid one
+      let testModel = 'gemini-1.5-flash'; // Default to older stable model (better free tier support)
+      let models = [];
+      
+      try {
+        models = await fetchGoogleAIModels(trimmedApiKey) || [];
+        if (models.length > 0) {
+          // Prefer older models for free tier (they usually have better quotas)
+          const preferredModel = models.find(m => m.id === 'gemini-1.5-flash') || 
+                                 models.find(m => m.id.includes('1.5-flash')) ||
+                                 models.find(m => m.id === 'gemini-2.5-flash') ||
+                                 models.find(m => m.id.includes('2.5-flash')) ||
+                                 models.find(m => m.id.includes('2.0')) ||
+                                 models[0];
+          testModel = preferredModel.id;
+        }
+      } catch (err) {
+        console.warn('Could not fetch models list, using default:', err.message);
+        // Fallback to default model
+      }
+      
+      // Try to test with the selected model
+      let lastError = null;
+      let testedModel = testModel;
+      
+      try {
+        const model = testAI.getGenerativeModel({ model: testModel });
+        const result = await model.generateContent('Say "Connection successful" in exactly those words.');
+        const response = result.response.text();
+        
+        res.json({
+          success: true,
+          data: {
+            provider: 'google',
+            model: testModel,
+            response: response.substring(0, 100)
+          }
+        });
+        return; // Success, exit early
+      } catch (error) {
+        lastError = error;
+        
+        // If quota exceeded, try alternative models
+        if (error.message && error.message.includes('429') && models.length > 1) {
+          // Try other models from the list
+          for (const altModel of models) {
+            if (altModel.id === testModel) continue; // Skip already tried model
+            
+            try {
+              const altModelInstance = testAI.getGenerativeModel({ model: altModel.id });
+              const result = await altModelInstance.generateContent('Say "Connection successful" in exactly those words.');
+              const response = result.response.text();
+              
+              res.json({
+                success: true,
+                data: {
+                  provider: 'google',
+                  model: altModel.id,
+                  response: response.substring(0, 100),
+                  note: `Использована альтернативная модель ${altModel.id} из-за ограничений квоты для ${testModel}`
+                }
+              });
+              return; // Success with alternative model
+            } catch (altError) {
+              // Continue to next model
+              continue;
+            }
+          }
+        }
+        
+        // If all models failed, throw the original error
+        throw lastError;
+      }
     } else if (provider === 'openai') {
       const testOpenAI = new OpenAI({ apiKey });
       const completion = await testOpenAI.chat.completions.create({
@@ -2769,9 +3122,34 @@ app.post('/api/settings/test', async (req, res) => {
     }
   } catch (error) {
     console.error('API Test failed:', error);
+    
+    // Extract more detailed error message
+    let errorMessage = error.message || 'Unknown error';
+    
+    // Check for Google AI specific errors
+    if (error.message && error.message.includes('API key not valid')) {
+      errorMessage = 'API ключ недействителен. Проверьте правильность ключа в Google AI Studio.';
+    } else if (error.message && error.message.includes('API_KEY_INVALID')) {
+      errorMessage = 'API ключ недействителен. Убедитесь, что ключ скопирован полностью из Google AI Studio.';
+    } else if (error.message && error.message.includes('429') || error.message.includes('quota') || error.message.includes('Quota exceeded')) {
+      // Quota exceeded error
+      const retryMatch = error.message.match(/Please retry in ([\d.]+)s/);
+      const retrySeconds = retryMatch ? Math.ceil(parseFloat(retryMatch[1])) : null;
+      
+      errorMessage = 'Превышен лимит бесплатного тарифа Google AI. ';
+      if (retrySeconds) {
+        errorMessage += `Попробуйте снова через ${retrySeconds} секунд. `;
+      }
+      errorMessage += 'Для увеличения лимитов настройте биллинг в Google Cloud Console или используйте другую модель.';
+    } else if (error.message && error.message.includes('404') && error.message.includes('not found')) {
+      errorMessage = 'Модель не найдена или не поддерживается. Попробуйте использовать другую модель из списка доступных.';
+    } else if (error.message && error.message.includes('API key')) {
+      errorMessage = `Ошибка API ключа: ${error.message}`;
+    }
+    
     res.status(400).json({ 
       success: false, 
-      error: `Connection failed: ${error.message}` 
+      error: `Connection failed: ${errorMessage}` 
     });
   }
 });

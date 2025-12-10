@@ -7,6 +7,8 @@ import {
   MoreVertical,
   Youtube,
   ExternalLink,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 import { type VideoQueueItem } from '../lib/types';
 import { StatusBadge, DepartmentBadge, PriorityBadge } from './ui/StatusBadge';
@@ -186,11 +188,23 @@ export function VideoCard({ video, onEdit, onDelete }: VideoCardProps) {
                 e.stopPropagation();
                 onEdit?.(video);
               }}
-              className="p-1.5 rounded-[8px] text-[var(--text-tertiary)] hover:text-[var(--primary-default)] hover:bg-[var(--primary-50)] transition-colors"
-              title="More options"
+              className="p-1.5 rounded-[8px] text-[var(--text-tertiary)] hover:text-blue-600 hover:bg-blue-50 transition-colors"
+              title="Edit video"
             >
-              <MoreVertical className="w-4 h-4" />
+              <Pencil className="w-4 h-4" />
             </button>
+            {onDelete && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete?.(video);
+                }}
+                className="p-1.5 rounded-[8px] text-[var(--text-tertiary)] hover:text-red-600 hover:bg-red-50 transition-colors"
+                title="Delete video"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
             <a
               href={video.video_url}
               target="_blank"
@@ -232,3 +246,4 @@ function formatDate(dateString: string): string {
   if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`;
   return `${Math.floor(diffDays / 365)} years ago`;
 }
+
